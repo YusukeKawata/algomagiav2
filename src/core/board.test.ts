@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { emptyBoard, place, circuits, skillCount, type Edge, type Board, type Stone } from '@core/board';
+import { emptyBoard, place, circuits, skillCount, dominantAttr, type Edge, type Attr, type Board, type Stone } from '@core/board';
 
-function S(id: string, edges: Edge[], value: number): Stone {
-  return { id, edges, value };
+function S(id: string, edges: Edge[], value: number, attr: Attr = 'fire'): Stone {
+  return { id, edges, value, attr };
 }
 
 /** 行ごとの駒並びから盤を作る（null=空き）。 */
@@ -57,5 +57,21 @@ describe('魔石盤: 回路の成立', () => {
   it('辺が噛み合わない隣接は導通しない（aにRがあってもbにLが無い）', () => {
     const b = boardOf([[S('a', ['L', 'R'], 1), S('b', ['R'], 1)]]);
     expect(circuits(b)).toHaveLength(0);
+  });
+});
+
+describe('魔石盤: スキルの元素（属性組成）', () => {
+  it('回路の元素＝属性別value合計が最大の属性', () => {
+    // 炎=1+1=2, 氷=3 → 氷が勝つ
+    const b = boardOf([[S('a', ['L', 'R'], 1, 'fire'), S('b', ['L', 'R'], 3, 'ice'), S('c', ['L', 'R'], 1, 'fire')]]);
+    const cs = circuits(b);
+    expect(cs).toHaveLength(1);
+    expect(cs[0]!.element).toBe('ice');
+    expect(cs[0]!.strength).toBe(5);
+  });
+
+  it('同点は ATTRS の順で先勝ち（決定論）', () => {
+    // 雷=2, 風=2 → ATTRS=['fire','ice','thunder','wind'] で thunder が先
+    expect(dominantAttr([S('a', [], 2, 'thunder'), S('b', [], 2, 'wind')])).toBe('thunder');
   });
 });

@@ -4,11 +4,16 @@
 
 export type Edge = 'L' | 'R' | 'U' | 'D';
 
-/** 1マス駒。edges は互いに導通する辺の集合（例: ['L','R']＝直線, ['L','R','U','D']＝十字）。 */
+/** 属性（元素）。スキルの種類は経路の属性組成で決まる（magic-stone-workshop.md §8）。 */
+export type Attr = 'fire' | 'ice' | 'thunder' | 'wind';
+export const ATTRS: Attr[] = ['fire', 'ice', 'thunder', 'wind'];
+
+/** 1マス駒。edges は互いに導通する辺の集合（例: ['L','R']＝直線, ['L','R','U','D']＝十字）。attr＝属性。 */
 export interface Stone {
   id: string;
   edges: Edge[];
   value: number;
+  attr: Attr;
 }
 
 export type Cell = Stone | null;
@@ -20,10 +25,24 @@ export interface Board {
   cells: Cell[][];
 }
 
-/** 成立した回路（＝スキル1発）。 */
+/** 成立した回路（＝スキル1発）。element＝経路の属性組成で決まる元素。 */
 export interface Circuit {
   stones: Stone[];
   strength: number;
+  element: Attr;
+}
+
+/** 経路の元素＝属性別 value 合計が最大の属性（同点は ATTRS の順で先勝ち＝決定論）。 */
+export function dominantAttr(stones: Stone[]): Attr {
+  const total = new Map<Attr, number>();
+  for (const s of stones) total.set(s.attr, (total.get(s.attr) ?? 0) + s.value);
+  let best: Attr = ATTRS[0]!;
+  let bestV = -1;
+  for (const a of ATTRS) {
+    const v = total.get(a) ?? 0;
+    if (v > bestV) { best = a; bestV = v; }
+  }
+  return best;
 }
 
 /** 空の盤を作る。 */
@@ -91,9 +110,11 @@ export function circuits(board: Board): Circuit[] {
       const touchesIn = comp.some((c) => c.x === 0 && has(c.s, 'L'));
       const touchesOut = comp.some((c) => c.x === width - 1 && has(c.s, 'R'));
       if (touchesIn && touchesOut) {
+        const stones = comp.map((c) => c.s);
         out.push({
-          stones: comp.map((c) => c.s),
-          strength: comp.reduce((sum, c) => sum + c.s.value, 0),
+          stones,
+          strength: stones.reduce((sum, s) => sum + s.value, 0),
+          element: dominantAttr(stones),
         });
       }
     }

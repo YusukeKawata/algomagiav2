@@ -2,16 +2,11 @@
 // 動的に毎回再描画する即時モード（ADR-0006 ハイブリッドの「動的=即時描画」方針）。
 import Phaser from 'phaser';
 import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
-import { emptyBoard, place, circuits, type Board, type Edge, type Stone } from '@core/board';
+import { emptyBoard, place, circuits, type Board, type Edge, type Attr, type Stone } from '@core/board';
 
-interface PaletteEntry {
-  key: string; // 表示記号
-  edges: Edge[];
-  value: number;
-}
-
-// 駒パレット（文様の種類）。値は強さ寄与（合計＝回路の強さ）。
-const PALETTE: PaletteEntry[] = [
+// 駒の形（文様）。値は強さ寄与。属性は配置時に別途選ぶ（形と属性は独立）。
+interface Shape { key: string; edges: Edge[]; value: number }
+const SHAPES: Shape[] = [
   { key: '─', edges: ['L', 'R'], value: 1 },
   { key: '│', edges: ['U', 'D'], value: 1 },
   { key: '┌', edges: ['D', 'R'], value: 1 },
@@ -22,13 +17,23 @@ const PALETTE: PaletteEntry[] = [
   { key: '┼', edges: ['L', 'R', 'U', 'D'], value: 3 },
 ];
 
+// 属性の表示（色・名前・選択キー）。
+const ATTR_INFO: Record<Attr, { color: number; label: string; key: string }> = {
+  fire: { color: 0xff7043, label: '炎', key: 'q' },
+  ice: { color: 0x4fc3f7, label: '氷', key: 'w' },
+  thunder: { color: 0xffd54f, label: '雷', key: 'e' },
+  wind: { color: 0x81c784, label: '風', key: 'r' },
+};
+const ATTR_KEYS: Attr[] = ['fire', 'ice', 'thunder', 'wind'];
+
 const CELL = 120;
 const COLS = 5;
 const ROWS = 4;
 
 export class BoardScene extends Phaser.Scene {
   private board!: Board;
-  private selected = 0;
+  private shapeIdx = 0;
+  private attr: Attr = 'fire';
   private counter = 0;
   private g!: Phaser.GameObjects.Graphics;
   private labels!: Phaser.GameObjects.Container;
@@ -43,51 +48,46 @@ export class BoardScene extends Phaser.Scene {
   create(): void {
     this.board = emptyBoard(COLS, ROWS);
     this.originX = (CANVAS_W - COLS * CELL) / 2;
-    this.originY = (CANVAS_H - ROWS * CELL) / 2 + 36;
+    this.originY = (CANVAS_H - ROWS * CELL) / 2 + 44;
 
     this.g = this.add.graphics();
     this.labels = this.add.container(0, 0);
-    this.hud = this.add.text(this.originX, 24, '', {
-      fontFamily: 'monospace',
-      fontSize: '20px',
-      color: COLORS.text,
-      lineSpacing: 4,
+    this.hud = this.add.text(this.originX, 22, '', {
+      fontFamily: 'monospace', fontSize: '20px', color: COLORS.text, lineSpacing: 5,
     });
 
     this.input.mouse?.disableContextMenu();
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.onClick(p));
-    this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
-      const n = parseInt(e.key, 10);
-      if (!Number.isNaN(n) && n >= 1 && n <= PALETTE.length) {
-        this.selected = n - 1;
-        this.render();
-      }
-    });
+    this.input.keyboard?.on('keydown', (e: KeyboardEvent) => this.onKey(e.key));
 
-    // デモの初期配置（業火っぽい一本道）。
-    this.board = place(this.board, 0, 1, this.mk(PALETTE[0]!));
-    this.board = place(this.board, 1, 1, this.mk(PALETTE[0]!));
-    this.board = place(this.board, 2, 1, this.mk(PALETTE[3]!)); // ┐ 左から下へ
-    this.board = place(this.board, 2, 2, this.mk(PALETTE[4]!)); // └ 上から右へ
-    this.board = place(this.board, 3, 2, this.mk(PALETTE[0]!));
-    this.board = place(this.board, 4, 2, this.mk(PALETTE[0]!));
+    // デモ初期配置（炎の一本道：左→右→下→右で出口）。
+    const place6: [number, number, number][] = [
+      [0, 1, 0], [1, 1, 0], [2, 1, 3], [2, 2, 4], [3, 2, 0], [4, 2, 0],
+    ];
+    for (const [x, y, si] of place6) this.board = place(this.board, x, y, this.mk(si, 'fire'));
 
     this.render();
   }
 
-  private mk(p: PaletteEntry): Stone {
-    return { id: `s${this.counter++}`, edges: [...p.edges], value: p.value };
+  private mk(shapeIdx: number, attr: Attr): Stone {
+    const s = SHAPES[shapeIdx]!;
+    return { id: `s${this.counter++}`, edges: [...s.edges], value: s.value, attr };
+  }
+
+  private onKey(key: string): void {
+    const n = parseInt(key, 10);
+    if (!Number.isNaN(n) && n >= 1 && n <= SHAPES.length) { this.shapeIdx = n - 1; this.render(); return; }
+    const hit = ATTR_KEYS.find((a) => ATTR_INFO[a].key === key.toLowerCase());
+    if (hit) { this.attr = hit; this.render(); }
   }
 
   private onClick(p: Phaser.Input.Pointer): void {
     const x = Math.floor((p.x - this.originX) / CELL);
     const y = Math.floor((p.y - this.originY) / CELL);
     if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return;
-    if (p.rightButtonDown()) {
-      this.board = place(this.board, x, y, null);
-    } else {
-      this.board = place(this.board, x, y, this.mk(PALETTE[this.selected]!));
-    }
+    this.board = p.rightButtonDown()
+      ? place(this.board, x, y, null)
+      : place(this.board, x, y, this.mk(this.shapeIdx, this.attr));
     this.render();
   }
 
@@ -114,11 +114,9 @@ export class BoardScene extends Phaser.Scene {
 
     // セル枠。
     g.lineStyle(1, 0x2a3350, 1);
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
+    for (let y = 0; y < ROWS; y++)
+      for (let x = 0; x < COLS; x++)
         g.strokeRect(this.originX + x * CELL, this.originY + y * CELL, CELL, CELL);
-      }
-    }
 
     // 駒と文様。
     for (let y = 0; y < ROWS; y++) {
@@ -127,13 +125,13 @@ export class BoardScene extends Phaser.Scene {
         if (!s) continue;
         const { cx, cy } = this.cellCenter(x, y);
         const lit = litIds.has(s.id);
-        const wire = lit ? 0x8fdcff : 0x55607a;
-        const fill = lit ? 0x14304a : 0x0e1422;
+        const ac = ATTR_INFO[s.attr].color;
+        const wire = lit ? ac : 0x55607a;
+        const fill = lit ? 0x101a2c : 0x0e1422;
 
         g.fillStyle(fill, 1).fillRoundedRect(
           this.originX + x * CELL + 10, this.originY + y * CELL + 10, CELL - 20, CELL - 20, 10,
         );
-        // 文様（中心→各導通辺）。
         g.lineStyle(7, wire, 1);
         const h = CELL / 2;
         for (const e of s.edges) {
@@ -146,27 +144,31 @@ export class BoardScene extends Phaser.Scene {
         }
         g.fillStyle(wire, 1).fillCircle(cx, cy, 8);
 
-        const t = this.add.text(cx + 16, cy + 14, String(s.value), {
-          fontFamily: 'monospace', fontSize: '16px', color: lit ? '#cde9ff' : COLORS.dim,
+        const t = this.add.text(cx + 18, cy + 16, `${ATTR_INFO[s.attr].label}${s.value}`, {
+          fontFamily: 'monospace', fontSize: '15px',
+          color: lit ? Phaser.Display.Color.IntegerToColor(ac).rgba : COLORS.dim,
         }).setOrigin(0.5);
         this.labels.add(t);
       }
     }
 
-    // 各回路の強さを出口側に。
+    // 各回路の 元素＋強さ を出口側に。
     cs.forEach((c, i) => {
-      const t = this.add.text(this.originX + COLS * CELL + 24, top + 12 + i * 26, `⚡${c.strength}`, {
-        fontFamily: 'monospace', fontSize: '20px', color: '#ffd089',
+      const info = ATTR_INFO[c.element];
+      const t = this.add.text(this.originX + COLS * CELL + 24, top + 10 + i * 28, `⚡${c.strength} ${info.label}`, {
+        fontFamily: 'monospace', fontSize: '20px', color: Phaser.Display.Color.IntegerToColor(info.color).rgba,
       });
       this.labels.add(t);
     });
 
-    const sel = PALETTE[this.selected]!;
-    const paletteStr = PALETTE.map((p, i) => (i === this.selected ? `[${i + 1}:${p.key}]` : `${i + 1}:${p.key}`)).join(' ');
+    const shape = SHAPES[this.shapeIdx]!;
+    const ai = ATTR_INFO[this.attr];
+    const shapeStr = SHAPES.map((s, i) => (i === this.shapeIdx ? `[${i + 1}:${s.key}]` : `${i + 1}:${s.key}`)).join(' ');
+    const attrStr = ATTR_KEYS.map((a) => (a === this.attr ? `[${ATTR_INFO[a].key}:${ATTR_INFO[a].label}]` : `${ATTR_INFO[a].key}:${ATTR_INFO[a].label}`)).join(' ');
     this.hud.setText([
-      `魔石盤  撃てるスキル: ${cs.length}   選択中: ${sel.key}(値${sel.value})`,
-      `駒: ${paletteStr}`,
-      `数字1-${PALETTE.length}=駒選択 / 左クリック=置く / 右クリック=消す`,
+      `魔石盤  撃てるスキル: ${cs.length}   選択中: ${shape.key}/${ai.label}(値${shape.value})`,
+      `形 ${shapeStr}    属性 ${attrStr}`,
+      `数字=形 / qwer=属性 / 左クリック=置く / 右クリック=消す`,
     ]);
   }
 }
