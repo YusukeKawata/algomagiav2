@@ -4,6 +4,9 @@ import Phaser from 'phaser';
 import { CANVAS_W, COLORS } from '@app/theme';
 import { emptyBoard, place, circuits, type Board, type Edge, type Attr, type Stone } from '@core/board';
 import { castCircuit, enemyTurn, circuitCost, type BattleState } from '@core/battle';
+import { currentBeat, advance } from '@game/flow';
+import { BOARD_ENEMIES } from '@game/data/enemies';
+import { game } from '@game/state';
 
 // 駒の形（文様）。値は強さ寄与。属性は配置時に別途選ぶ（形と属性は独立）。
 interface Shape { key: string; edges: Edge[]; value: number }
@@ -37,6 +40,7 @@ function rgba(color: number): string {
 export class BoardScene extends Phaser.Scene {
   private board!: Board;
   private battle!: BattleState;
+  private flowMode = false;
   private log = '盤に回路を組んで [F] で撃つ';
   private shapeIdx = 0;
   private attr: Attr = 'fire';
@@ -52,8 +56,11 @@ export class BoardScene extends Phaser.Scene {
   }
 
   create(): void {
+    const beat = currentBeat();
+    this.flowMode = beat?.kind === 'battle' && beat.mode === 'board';
     this.board = emptyBoard(COLS, ROWS);
     this.battle = this.freshBattle();
+    if (this.flowMode && beat?.kind === 'battle') this.log = beat.intro;
     this.originX = (CANVAS_W - COLS * CELL) / 2;
     this.originY = 112;
 
@@ -77,6 +84,11 @@ export class BoardScene extends Phaser.Scene {
   }
 
   private freshBattle(): BattleState {
+    const beat = currentBeat();
+    if (beat?.kind === 'battle' && beat.mode === 'board') {
+      const e = BOARD_ENEMIES[beat.enemyId];
+      if (e) return { freeWill: { max: game.freeWillMax, cur: game.freeWillMax }, enemy: { name: e.name, hp: e.hp, maxHp: e.hp, weakness: e.weakness }, outcome: 'none' };
+    }
     return { freeWill: { max: 24, cur: 24 }, enemy: { name: '石像兵', hp: 30, maxHp: 30, weakness: 'fire' }, outcome: 'none' };
   }
 
@@ -89,10 +101,11 @@ export class BoardScene extends Phaser.Scene {
     const n = parseInt(key, 10);
     if (!Number.isNaN(n) && n >= 1 && n <= SHAPES.length) { this.shapeIdx = n - 1; this.render(); return; }
     const k = key.toLowerCase();
+    if (this.flowMode && this.battle.outcome === 'win' && (k === 'z' || k === 'enter')) { advance(this); return; }
     const hit = ATTR_KEYS.find((a) => ATTR_INFO[a].key === k);
     if (hit) { this.attr = hit; this.render(); return; }
     if (k === 'f') { this.fire(); return; }
-    if (k === 'n') { this.battle = this.freshBattle(); this.log = '新しい敵が現れた'; this.render(); return; }
+    if (k === 'n' && !this.flowMode) { this.battle = this.freshBattle(); this.log = '新しい敵が現れた'; this.render(); return; }
   }
 
   private fire(): void {
@@ -108,7 +121,7 @@ export class BoardScene extends Phaser.Scene {
       this.battle = e.state;
       this.log += `／敵の干渉 自由意志-${e.drain}`;
     }
-    if (this.battle.outcome === 'win') this.log = `${this.battle.enemy.name}を倒した！ [N]で次へ`;
+    if (this.battle.outcome === 'win') this.log = `${this.battle.enemy.name}を倒した！ ${this.flowMode ? '[Z]で進む' : '[N]で次へ'}`;
     if (this.battle.outcome === 'lose') this.log = '無気力に陥った…（自由意志0）[N]で再戦';
     this.render();
   }
