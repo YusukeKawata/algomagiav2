@@ -5,6 +5,7 @@ import { NAMES } from '@game/data/names';
 export interface Line { who: string; text: string }
 export type Beat =
   | { kind: 'dialog'; lines: Line[] }
+  | { kind: 'field'; mapId: string } // 歩けるマップ（探索・会話・遭遇）
   | { kind: 'awaken' } // 据炉の覚醒（冷たいアナウンス＋初の代償）
   | { kind: 'battle'; mode: 'phys' | 'board'; enemyId: string; intro: string }
   | { kind: 'end' };
@@ -17,27 +18,17 @@ export const ACT1: Beat[] = [
     lines: [
       { who: '', text: `深い霧と窪地が、${N.village}を魔物の目から遠ざけている。畑と狩りの、閉じているが温かい暮らし。` },
       { who: '', text: `だが里を守る「${N.wardStone}」の光が、近ごろ弱まっている。` },
-      { who: N.elder, text: `…${N.heroDefault}。お前に頼みがある。${N.wardStone}が、もう保たん。` },
-      { who: N.elder, text: `古い歌に言う——「強い魔物の体内には、大きな魔石がある」。${N.ruin}の奥に、ひときわ強いのが棲むそうだ。` },
-      { who: N.elder, text: `そいつを狩り、大きな魔石を持ち帰れ。新しい${N.wardStone}にする。…お前なら動けるし、何より、決まりごとに収まらん奴だからな。` },
-      { who: N.friend, text: `また無茶を…。気をつけてよ、${N.heroDefault}。あたしは里に残って、守りを見てる。` },
-      { who: '', text: `（${N.ruin}へ向かった。）` },
+      { who: '', text: `（里を歩き、${N.elder}に話を聞こう。）` },
     ],
   },
-  { kind: 'battle', mode: 'phys', enemyId: 'mob1', intro: `${N.ruin}の入口。${N.mob}が道を塞ぐ。` },
-  {
-    kind: 'dialog',
-    lines: [
-      { who: '', text: `倒した魔物の体から、小さな魔石がこぼれ落ちた。` },
-      { who: N.heroDefault, text: `（使い道はわからない。…でも、なぜか拾ってしまう。）` },
-    ],
-  },
-  { kind: 'battle', mode: 'phys', enemyId: 'mob2', intro: `奥へ進む。古い紋様の走る${N.mob}がもう一体。` },
+  { kind: 'field', mapId: 'village' },
+  { kind: 'field', mapId: 'ruin' },
   {
     kind: 'dialog',
     lines: [
       { who: '', text: `遺構の最奥。淀んだ空気の中、巨大な影が身を起こす。` },
       { who: '', text: `${N.boss}——歌に伝わる、遺構の主。` },
+      { who: N.heroDefault, text: `（道中で拾った小さな魔石が、ポケットで重い。…使い道は、まだ分からない。）` },
     ],
   },
   { kind: 'battle', mode: 'phys', enemyId: 'boss', intro: `${N.boss}が立ちはだかる！` },

@@ -17,6 +17,9 @@ export function route(scene: Phaser.Scene): void {
     case 'awaken':
       scene.scene.start('Story');
       break;
+    case 'field':
+      scene.scene.start('Field');
+      break;
     case 'battle':
       scene.scene.start(b.mode === 'board' ? 'Board' : 'Phys');
       break;

@@ -102,6 +102,7 @@ export class BoardScene extends Phaser.Scene {
     if (!Number.isNaN(n) && n >= 1 && n <= SHAPES.length) { this.shapeIdx = n - 1; this.render(); return; }
     const k = key.toLowerCase();
     if (this.flowMode && this.battle.outcome === 'win' && (k === 'z' || k === 'enter')) { advance(this); return; }
+    if (this.flowMode && this.battle.outcome === 'lose' && (k === 'z' || k === 'enter')) { this.battle = this.freshBattle(); this.log = '無気力から立ち直った。もう一度——'; this.render(); return; }
     const hit = ATTR_KEYS.find((a) => ATTR_INFO[a].key === k);
     if (hit) { this.attr = hit; this.render(); return; }
     if (k === 'f') { this.fire(); return; }
@@ -122,7 +123,7 @@ export class BoardScene extends Phaser.Scene {
       this.log += `／敵の干渉 自由意志-${e.drain}`;
     }
     if (this.battle.outcome === 'win') this.log = `${this.battle.enemy.name}を倒した！ ${this.flowMode ? '[Z]で進む' : '[N]で次へ'}`;
-    if (this.battle.outcome === 'lose') this.log = '無気力に陥った…（自由意志0）[N]で再戦';
+    if (this.battle.outcome === 'lose') this.log = `無気力に陥った…（自由意志0）${this.flowMode ? '[Z]でやり直す' : '[N]で再戦'}`;
     this.render();
   }
 

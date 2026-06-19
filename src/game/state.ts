@@ -28,4 +28,11 @@ function makeFresh(): GameState {
 
 export function resetGame(): void {
   Object.assign(game, makeFresh());
+  Object.assign(fieldResume, { active: false, mapId: '', x: 0, y: 0, step: 0, questGiven: false, encounters: 0 });
 }
+
+// フィールド→戦闘→フィールド の往復で、歩いていた位置/進捗を保持する。
+export interface FieldResume {
+  active: boolean; mapId: string; x: number; y: number; step: number; questGiven: boolean; encounters: number;
+}
+export const fieldResume: FieldResume = { active: false, mapId: '', x: 0, y: 0, step: 0, questGiven: false, encounters: 0 };
