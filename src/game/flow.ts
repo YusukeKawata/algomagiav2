@@ -2,10 +2,12 @@
 // 各シーンは完了時に advance(this) を呼ぶ＝次の beat のシーンへ。
 import type Phaser from 'phaser';
 import { ACT1, type Beat } from '@game/script';
+import { maybeAutosave } from '@game/save';
 
 let idx = 0;
 
 export function startFlow(): void { idx = 0; }
+export function setFlowIndex(i: number): void { idx = i; }
 export function currentBeat(): Beat | undefined { return ACT1[idx]; }
 
 /** 現在の beat に対応するシーンを開始する。 */
@@ -32,5 +34,6 @@ export function route(scene: Phaser.Scene): void {
 /** 次の beat へ進み、そのシーンを開始する。 */
 export function advance(scene: Phaser.Scene): void {
   idx++;
+  maybeAutosave(idx); // 覚醒後のみ保存される
   route(scene);
 }

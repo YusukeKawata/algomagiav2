@@ -5,6 +5,7 @@ import Phaser from 'phaser';
 import RexUIPlugin from 'phaser4-rex-plugins/templates/ui/ui-plugin.js';
 import { CANVAS_W, CANVAS_H } from '@app/theme';
 import { TitleScene } from '@app/TitleScene';
+import { NameEntryScene } from '@app/NameEntryScene';
 import { StoryScene } from '@app/StoryScene';
 import { FieldScene } from '@app/FieldScene';
 import { PhysBattleScene } from '@app/PhysBattleScene';
@@ -22,5 +23,5 @@ new Phaser.Game({
   plugins: {
     scene: [{ key: 'rexUI', plugin: RexUIPlugin, mapping: 'rexUI' }],
   },
-  scene: [TitleScene, StoryScene, FieldScene, PhysBattleScene, BoardScene, TheEndScene],
+  scene: [TitleScene, NameEntryScene, StoryScene, FieldScene, PhysBattleScene, BoardScene, TheEndScene],
 });
