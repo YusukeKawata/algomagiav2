@@ -1,0 +1,25 @@
+{
+  "name": "algomagia",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "計算理論を魔法にするノベルRPG（v2）。決定論SQ vs 自由意志exSQ。最適化=出力不変のコスト減（設計契約）。魔石=ハード/自由意志=燃料の二軸。",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.10.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "phaser": "^4.1.0",
+    "phaser4-rex-plugins": "^4.0.7"
+  }
+}
