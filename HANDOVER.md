@@ -10,8 +10,8 @@ v2 がv1実装からズレすぎたため、混乱を避けて**殻（UI/物語/
 
 ## いまの状態（結論）
 
-**土台のみ完成。** Phaser 4 が起動する最小骨組み（`BootScene` がタイトル文字を描画）＋設定/hooks/テスト基盤を整備。
-`npm run typecheck` / `npm run test`（smoke 1件）/ `npm run build` すべて緑。**本実装（タイトル/フィールド/戦闘/会話/工房…）はこれから。**
+**土台＋魔石盤の最小核（可視化まで）完成。** Phaser 4 起動＋`src/core/board.ts`（回路判定・決定論・テスト6件）＋`src/app/BoardScene.ts`（5×4盤を操作＝駒を置くと回路が点灯しスキル数/強さが出る）。
+`npm run typecheck` / `npm run test`（7件）/ `npm run build` すべて緑。`npm run dev` で盤を操作可。**他の本実装（タイトル/フィールド/戦闘/会話/物語）はこれから。** ※`BootScene.ts` は未使用（後でタイトルに転用候補）。
 
 ロックした基盤決定（詳細 [ADR-0001](docs/adr/0001-v2-foundation.md)）:
 - **ジャンル**＝ノベルRPG（RPG主体・テキスト多め）。
@@ -34,11 +34,16 @@ v2 がv1実装からズレすぎたため、混乱を避けて**殻（UI/物語/
 ## 再開のしかた
 ```
 npm install        # 初回のみ（phaser / phaser4-rex-plugins 含む）
-npm run test       # smoke 1件。緑を確認
+npm run test       # board 6件＋smoke。緑を確認
 npm run typecheck
 npm run build
-npm run dev        # ブラウザで BootScene を確認
+npm run dev        # ブラウザで 魔石盤（BoardScene）を操作（数字=駒選択/左クリック=置く/右クリック=消す）
 ```
+
+## ブラウザでの実機確認（UI）
+Phaser は WebGL＝ヘッドレスChromeは既定で黒画面。`.claude/tmp/shot.cjs`（playwright-core を npx キャッシュから require／
+`executablePath` に既存 chromium-1217／`--use-angle=swiftshader` 等）で dev サーバを撮影→Read で目視。
+雛形は `.claude/tmp/`（gitignore 済）。dev は `npm run dev -- --port 5188 --strictPort` で起動。
 
 ## 壊すと事故るもの（約束ごと）
 - **ADR-0001 v2 が基盤**。二軸（自由意志/魔石）・テーマ＝設計契約（実ops縛りは無し）・乱数はシード付き。

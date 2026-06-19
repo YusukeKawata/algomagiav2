@@ -6,6 +6,7 @@
 - **土台のみ完成**: Phaser 4 起動の最小骨組み（BootScene）＋設定/hooks/Vitest。typecheck/test/build すべて緑。git 初期化済み。
 - 基盤決定はすべてロック（ADR-0001 v2）。世界観は world-bible.md（旧 draft を正典化）。
 - **魔石工房＝回路パズル盤の骨子を確定**（[magic-stone-workshop.md](docs/design/magic-stone-workshop.md)）：盤=心域×演算・自由意志を左から流し左→右につながった経路＝スキル・強さ＝経路の魔石数値合計。経済＝階層＋一生。**ADR-0001 D4 を改訂**（三ゲージ＝盤寸法＝主人公ステータス／魔石＝駒）。
+- **最小核を実装＋可視化**：`src/core/board.ts`（回路判定・テスト6件）＋ `src/app/BoardScene.ts`（5×4盤を描画・駒を数字キー選択＋クリック配置・回路点灯・スキル数/強さ表示）。`npm run dev` で操作可。playwright スクショで描画＆操作を確認済み。
 
 ## 次の候補（方式A＝小さい複数案を出して ponti が選ぶ）
 

@@ -3,7 +3,7 @@
 import Phaser from 'phaser';
 import RexUIPlugin from 'phaser4-rex-plugins/templates/ui/ui-plugin.js';
 import { CANVAS_W, CANVAS_H } from '@app/theme';
-import { BootScene } from '@app/BootScene';
+import { BoardScene } from '@app/BoardScene';
 
 new Phaser.Game({
   type: Phaser.AUTO,
@@ -16,5 +16,5 @@ new Phaser.Game({
   plugins: {
     scene: [{ key: 'rexUI', plugin: RexUIPlugin, mapping: 'rexUI' }],
   },
-  scene: [BootScene],
+  scene: [BoardScene],
 });
