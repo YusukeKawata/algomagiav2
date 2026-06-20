@@ -7,6 +7,7 @@ import { emptyBoard, place, circuits, type Circuit, type Stone } from '@core/boa
 import { makeStone, GARO_STONE } from '@game/data/stones';
 import { ENEMIES, RUIN_ENCOUNTERS } from '@game/data/enemies';
 import { statsForLevel } from '@core/progress';
+import { nextBoardDims } from '@game/state';
 
 const HERO = { hpMax: 30, freeWillMax: 24, atk: 6, def: 0 };
 function fresh(over: Partial<{ atk: number; def: number; ehp: number; eatk: number }> = {}): CombatState {
@@ -70,6 +71,18 @@ describe('ターン制戦闘: 行動', () => {
   it('circuitCost は経路の石数（最低1）', () => {
     expect(circuitCost(circuit(9, 'fire', 5))).toBe(5);
     expect(circuitCost({ stones: [] })).toBe(1);
+  });
+});
+
+describe('魔石盤: 覚醒後レベルアップで1段ずつ広がる（1×1スタート→心域優先→上限3×3）', () => {
+  it('成長スケジュールが単調（駒の保持はsetBoardSize側）', () => {
+    let d = { mind: 1, compute: 1 };
+    const seq = [d];
+    for (let i = 0; i < 6; i++) { d = nextBoardDims(d.mind, d.compute); seq.push(d); }
+    expect(seq).toEqual([
+      { mind: 1, compute: 1 }, { mind: 2, compute: 1 }, { mind: 2, compute: 2 },
+      { mind: 3, compute: 2 }, { mind: 3, compute: 3 }, { mind: 3, compute: 3 }, { mind: 3, compute: 3 },
+    ]);
   });
 });
 

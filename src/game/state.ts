@@ -118,6 +118,15 @@ export function clearCell(x: number, y: number): void {
 }
 
 // ——— 盤の成長（心域/演算）。配置済みの駒は範囲内なら保持 ———
+
+/** 覚醒後のレベルアップで盤を1段広げる次寸法（心域=横を優先→演算=縦、第1幕は上限3×3）。純関数＝テスト可。 */
+export function nextBoardDims(mind: number, compute: number): { mind: number; compute: number } {
+  if (mind < 3 && mind <= compute) return { mind: mind + 1, compute };
+  if (compute < 3) return { mind, compute: compute + 1 };
+  if (mind < 3) return { mind: mind + 1, compute };
+  return { mind, compute };
+}
+
 export function setBoardSize(mind: number, compute: number): void {
   game.mind = Math.max(1, mind);
   game.compute = Math.max(1, compute);
@@ -171,7 +180,12 @@ export function grantXp(amount: number): XpResult {
   const s = statsForLevel(game.level);
   game.heroHpMax = s.hpMax;
   game.freeWillMax = s.freeWillMax;
-  if (r.leveledUp) { game.heroHp = maxHp(); game.freeWill = game.freeWillMax; }
+  if (r.leveledUp) {
+    game.heroHp = maxHp();
+    game.freeWill = game.freeWillMax;
+    // 覚醒後は、強くなる（レベルアップ）たびに魔石盤も1段広がる＝戦って盤を育てる。
+    if (game.skillUnlocked) { const d = nextBoardDims(game.mind, game.compute); setBoardSize(d.mind, d.compute); }
+  }
   return r;
 }
 
