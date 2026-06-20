@@ -14,22 +14,26 @@ describe('盤戦: 覚醒後の最初の戦い', () => {
     expect(cs[0]!.element).toBe('fire');
   });
 
-  it('初期盤面のまま最強回路を撃ち続ければ awakened に勝てる', () => {
-    const board = buildBoard(AWAKENED_START);
-    const e = BOARD_ENEMIES['awakened']!;
-    let s: BattleState = {
-      freeWill: { max: 24, cur: 24 },
-      enemy: { name: e.name, hp: e.hp, maxHp: e.hp, weakness: e.weakness },
-      outcome: 'none',
-    };
-    let guard = 0;
-    while (s.outcome === 'none' && guard++ < 50) {
-      const affordable = circuits(board).filter((c) => circuitCost(c) <= s.freeWill.cur);
-      expect(affordable.length).toBeGreaterThan(0); // 詰まない
-      const best = affordable.reduce((a, b) => (b.strength > a.strength ? b : a));
-      s = castCircuit(s, best).state;
-      if (s.outcome === 'none') s = enemyTurn(s, 2).state;
-    }
-    expect(s.outcome).toBe('win');
-  });
+  // 台本に出る炎弱点の盤戦は、初期の炎盤＋最強回路だけで勝てること（詰まない）を固定する。
+  for (const id of ['awakened', 'frost'] as const) {
+    it(`初期盤面の炎回路で ${id} に勝てる（自由意志24で詰まない）`, () => {
+      const board = buildBoard(AWAKENED_START);
+      const e = BOARD_ENEMIES[id]!;
+      expect(e.weakness).toBe('fire'); // 炎盤で押せる前提
+      let s: BattleState = {
+        freeWill: { max: 24, cur: 24 },
+        enemy: { name: e.name, hp: e.hp, maxHp: e.hp, weakness: e.weakness },
+        outcome: 'none',
+      };
+      let guard = 0;
+      while (s.outcome === 'none' && guard++ < 50) {
+        const affordable = circuits(board).filter((c) => circuitCost(c) <= s.freeWill.cur);
+        expect(affordable.length).toBeGreaterThan(0); // 詰まない
+        const best = affordable.reduce((a, b) => (b.strength > a.strength ? b : a));
+        s = castCircuit(s, best).state;
+        if (s.outcome === 'none') s = enemyTurn(s, 2).state;
+      }
+      expect(s.outcome).toBe('win');
+    });
+  }
 });

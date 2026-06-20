@@ -8,9 +8,10 @@ import { castCircuit, enemyTurn, circuitCost, type BattleState } from '@core/bat
 import { currentBeat, advance } from '@game/flow';
 import { BOARD_ENEMIES } from '@game/data/enemies';
 import { SHAPES, AWAKENED_START, buildBoard } from '@game/data/boards';
-import { game } from '@game/state';
+import { game, grantXp } from '@game/state';
 import { fadeInOnCreate, addMuteToggle, popupNumber, flash, shake } from '@app/ui/fx';
 import { playSfx } from '@app/ui/sfx';
+import { paintScene } from '@app/ui/bg';
 
 const ATTR_INFO: Record<Attr, { color: number; label: string; key: string }> = {
   fire: { color: 0xff7043, label: '炎', key: 'q' },
@@ -51,6 +52,7 @@ export class BoardScene extends Phaser.Scene {
 
   create(): void {
     fadeInOnCreate(this);
+    paintScene(this, 'board');
     const beat = currentBeat();
     this.flowMode = beat?.kind === 'battle' && beat.mode === 'board';
     this.board = this.flowMode ? buildBoard(AWAKENED_START) : emptyBoard(COLS, ROWS);
@@ -76,13 +78,19 @@ export class BoardScene extends Phaser.Scene {
     this.render();
   }
 
+  private enemyXp = 0;
+
   private freshBattle(): BattleState {
     const beat = currentBeat();
     if (beat?.kind === 'battle' && beat.mode === 'board') {
       const e = BOARD_ENEMIES[beat.enemyId];
-      if (e) return { freeWill: { max: game.freeWillMax, cur: game.freeWillMax }, enemy: { name: e.name, hp: e.hp, maxHp: e.hp, weakness: e.weakness }, outcome: 'none' };
+      if (e) {
+        this.enemyXp = e.xp;
+        return { freeWill: { max: game.freeWillMax, cur: game.freeWillMax }, enemy: { name: e.name, hp: e.hp, maxHp: e.hp, weakness: e.weakness }, outcome: 'none' };
+      }
     }
-    return { freeWill: { max: 24, cur: 24 }, enemy: { name: '石像兵', hp: 30, maxHp: 30, weakness: 'fire' }, outcome: 'none' };
+    this.enemyXp = 8;
+    return { freeWill: { max: game.freeWillMax, cur: game.freeWillMax }, enemy: { name: '石像兵', hp: 30, maxHp: 30, weakness: 'fire' }, outcome: 'none' };
   }
 
   private mk(shapeIdx: number, attr: Attr): Stone {
@@ -142,7 +150,16 @@ export class BoardScene extends Phaser.Scene {
       shake(this, 0.006, 140);
       this.log += `／敵の干渉 自由意志-${e.drain}`;
     }
-    if (this.battle.outcome === 'win') { playSfx('win'); this.log = `${this.battle.enemy.name}を倒した！ ${this.flowMode ? '[Z]で進む' : '[N]で次へ'}`; }
+    if (this.battle.outcome === 'win') {
+      playSfx('win');
+      const xr = grantXp(this.enemyXp);
+      this.log = `${this.battle.enemy.name}を倒した！ 経験+${this.enemyXp}。`;
+      if (xr.leveledUp) {
+        popupNumber(this, this.originX + COLS * CELL / 2, this.originY + ROWS * CELL / 2, `LEVEL UP! Lv.${xr.to}`, { color: '#ffe27a', big: true });
+        this.log += `★レベルアップ Lv.${xr.from}→${xr.to}。`;
+      }
+      this.log += this.flowMode ? '[Z]で進む' : '[N]で次へ';
+    }
     if (this.battle.outcome === 'lose') { playSfx('lose'); this.log = `無気力に陥った…（自由意志0）${this.flowMode ? '[Z]でやり直す' : '[N]で再戦'}`; }
     this.render();
   }
@@ -264,7 +281,7 @@ export class BoardScene extends Phaser.Scene {
     const shapeStr = SHAPES.map((s, i) => (i === this.shapeIdx ? `[${i + 1}:${s.key}]` : `${i + 1}:${s.key}`)).join(' ');
     const attrStr = ATTR_KEYS.map((a) => (a === this.attr ? `[${ATTR_INFO[a].key}:${ATTR_INFO[a].label}]` : `${ATTR_INFO[a].key}:${ATTR_INFO[a].label}`)).join(' ');
     this.hud.setText([
-      `魔石盤  撃てるスキル: ${cs.length}   選択中の駒: ${shape.key}/${ai.label}(値${shape.value})`,
+      `魔石盤  ${game.heroName} Lv.${game.level}   撃てるスキル: ${cs.length}   選択中の駒: ${shape.key}/${ai.label}(値${shape.value})`,
       `形 ${shapeStr}    属性 ${attrStr}`,
       `数字=形 qwer=属性 左ｸﾘｯｸ=置く 右ｸﾘｯｸ=消す  ↑↓=撃つ回路を選ぶ [F]=撃つ`,
     ]);

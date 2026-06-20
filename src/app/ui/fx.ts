@@ -25,7 +25,9 @@ export function transitionTo(scene: Phaser.Scene, key: string, data?: object, du
   if (s.__leaving) return;
   s.__leaving = true;
   const cam = scene.cameras.main;
-  cam.once('camerafadeoutcomplete', () => scene.scene.start(key, data));
+  // data は必ず明示で渡す（undefined だと Phaser が前回 start 時の data を使い回す＝
+  // 例: 直前の遭遇戦 {mode:'encounter'} がボス戦に漏れて番獣がmobになる事故を防ぐ）。
+  cam.once('camerafadeoutcomplete', () => scene.scene.start(key, data ?? {}));
   cam.fadeOut(dur, ...FADE_RGB);
 }
 

@@ -9,6 +9,7 @@ let idx = 0;
 
 export function startFlow(): void { idx = 0; }
 export function setFlowIndex(i: number): void { idx = i; }
+export function flowIndex(): number { return idx; }
 export function currentBeat(): Beat | undefined { return ACT1[idx]; }
 
 /** 現在の beat に対応するシーンへ（フェード遷移で統一）。 */

@@ -1,11 +1,11 @@
 // 会話・物語・覚醒シーン。ACT1 の 'dialog'/'awaken' beat を DialogBox で1文字ずつ送る。
 // 〔アート未〕立ち絵/背景は差し替え枠。覚醒だけ背景を暗く沈め、据炉の声を cold スタイルで出す。
 import Phaser from 'phaser';
-import { CANVAS_W, CANVAS_H } from '@app/theme';
 import { currentBeat, advance } from '@game/flow';
 import { game } from '@game/state';
 import { DialogBox } from '@app/ui/dialogbox';
 import { fadeInOnCreate, addMuteToggle } from '@app/ui/fx';
+import { paintScene } from '@app/ui/bg';
 
 interface Seg { who: string; text: string; cold?: boolean }
 
@@ -35,8 +35,9 @@ export class StoryScene extends Phaser.Scene {
     this.segs = this.isAwaken ? AWAKEN : (beat?.kind === 'dialog' ? beat.lines : []);
     this.i = 0;
 
-    // 背景（覚醒は暗く沈める）。〔アート未〕差し替え枠。
-    this.add.rectangle(0, 0, CANVAS_W, CANVAS_H, this.isAwaken ? 0x02030a : 0x0a0e1a).setOrigin(0);
+    // 手続き背景（覚醒は冷たい裂け目、それ以外は beat.bg で指定／既定は里）。
+    const bgKind = this.isAwaken ? 'awaken' : ((beat?.kind === 'dialog' && beat.bg) || 'village');
+    paintScene(this, bgKind as Parameters<typeof paintScene>[1]);
 
     this.box = new DialogBox(this);
 

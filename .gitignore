@@ -8,3 +8,6 @@ CLAUDE.local.md
 coverage/
 
 .claude/tmp/
+
+# Kenney 生アセットの保管庫（CC0・再DL可）。配信用は public/assets/ に置く。
+art-src/

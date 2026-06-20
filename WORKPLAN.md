@@ -2,7 +2,12 @@
 
 > 「**次に何をするか**」だけを持つ。再開の入口は [HANDOVER.md](HANDOVER.md)。基盤決定は [docs/adr/0001-v2-foundation.md](docs/adr/0001-v2-foundation.md)。
 
-## 現状（2026-06-19）
+## 現状（2026-06-20）
+- **第1幕＝RPGとして遊べる**：里→森の小道→遺構の探索＋遭遇戦（奥ほど強い）＋番獣（物理）＋覚醒＋盤戦2連戦。**XPでレベルアップ**（L1→L5：HP/火力/自由意志↑）。背景=手続き生成、フィールド=Kenneyタイル。core 44テスト/typecheck/build 緑、通しで TheEnd 到達・pageエラー0。
+- **次の最優先＝敵のレベルスケール**（作業ゲー化防止・no-softlockテスト付き）。詳細・優先順は [HANDOVER.md](HANDOVER.md) の「次にやること」。
+- 以下は旧経緯ログ（土台→縦スライス→アセット→RPG肉付け）。
+
+## 旧経緯（2026-06-19 土台）
 - **土台のみ完成**: Phaser 4 起動の最小骨組み（BootScene）＋設定/hooks/Vitest。typecheck/test/build すべて緑。git 初期化済み。
 - 基盤決定はすべてロック（ADR-0001 v2）。世界観は world-bible.md（旧 draft を正典化）。
 - **魔石工房＝回路パズル盤の骨子を確定**（[magic-stone-workshop.md](docs/design/magic-stone-workshop.md)）：盤=心域×演算・自由意志を左から流し左→右につながった経路＝スキル・強さ＝経路の魔石数値合計。経済＝階層＋一生。**ADR-0001 D4 を改訂**（三ゲージ＝盤寸法＝主人公ステータス／魔石＝駒）。
@@ -22,6 +27,19 @@
 - **盤戦**：成立回路を↑↓で選んで[F]で撃つ／選択ハイライト・回路一覧・点灯パルス・回路成立フィードバック。駒形/初期配置は `game/data/boards.ts`。
 - **ソフトロック修正**：フェード中の連打で遷移が多重起動する事故を退場ガードで根治。
 - 規約は [docs/design/scene-template.md](docs/design/scene-template.md)。テスト23件緑・playwrightで通し(TheEnd到達)・pageエラーゼロ。
+
+## RPG肉付け 済（2026-06-20）
+- **成長**：`core/progress.ts`（XP/レベル/ステータス曲線・テスト）。`grantXp`/`physPower`。レベルアップ＝全回復＋演出。HUDにLv。
+- **戦闘量/多様化**：`enemies.ts` 拡充＋`core/rng.ts`（シード）。遺構=4連戦・奥ほど強い。盤戦2連戦（awakened→frost）。
+- **物語/探索**：`script.ts` 加筆・NPC会話分岐・遺構17×11拡大（Field寸法は動的）。
+- **重要バグ修正**：`transitionTo` の data 未指定で前回dataを使い回し→ボス戦が遭遇mob化していた事故を `data ?? {}` で根治。
+- **探索拡張 済**：新エリア「森の小道」(`path`)を里↔遺構間に挿入（遭遇は `ENCOUNTER_POOLS` で汎用化）。「調べる」(`EXAMINES`)で世界観を小出し＋遺構に一度きりの魔石拾得。通しで戦闘10・L1→L5。
+- 残り改善候補：ボス/盤敵のレベルスケール、盤の属性別敵（thunder/wind弱点）を活かす盤編集チュートリアル、村のサブ会話/NPC追加、BGM（手続き合成）、第2幕の第二の里。
+
+## アセット導入 済（2026-06-20）
+- **手続き背景 `src/app/ui/bg.ts`**：全シーンに `paintScene`（霧/星/シルエット/光/裂け目/魔法陣/ビネット・シード付き・tween）。
+- **Kenneyタイルでフィールド本物化**：`PreloadScene`＋`tiles.ts`（`addTile`/`TILE.*`）＋`pixelArt`。里＝草地+森+守り石(水晶)、遺構＝石畳+墓石壁+枯れ木/髑髏+番獣の座。配信＝`public/assets/tiles/`、原本＝`art-src/`(gitignore)。
+- **人物アートは未供給**（両パックに無い）＝主人公/NPC/敵は色トークン継続。次に立ち絵を入れるならここを差し替え。
 
 ## 次の候補（自走の続き・方式A）
 - **第2幕の入口（第二の里・地中）＋魔石工房の集積UI**：盤に駒を恒久配置して育てる＝成長システム本格始動（§8.9）。心域=回復魔法解禁も。

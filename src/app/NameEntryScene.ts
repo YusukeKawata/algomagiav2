@@ -1,11 +1,12 @@
 // 名前入力。英字を打ち、Enter で確定（空なら既定名）。Backspace で消す。〔簡易版〕
 import Phaser from 'phaser';
-import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
+import { CANVAS_W, COLORS } from '@app/theme';
 import { game } from '@game/state';
 import { NAMES } from '@game/data/names';
 import { startFlow, route } from '@game/flow';
 import { fadeInOnCreate, addMuteToggle } from '@app/ui/fx';
 import { playSfx } from '@app/ui/sfx';
+import { paintScene } from '@app/ui/bg';
 
 export class NameEntryScene extends Phaser.Scene {
   private name = '';
@@ -16,7 +17,7 @@ export class NameEntryScene extends Phaser.Scene {
   create(): void {
     fadeInOnCreate(this);
     this.name = '';
-    this.add.rectangle(0, 0, CANVAS_W, CANVAS_H, 0x070a12).setOrigin(0);
+    paintScene(this, 'village');
     this.add.text(CANVAS_W / 2, 220, 'なまえを いれてください', {
       fontFamily: 'sans-serif', fontSize: '30px', color: COLORS.text,
     }).setOrigin(0.5);

@@ -3,16 +3,40 @@
 import Phaser from 'phaser';
 import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
 import { currentBeat, advance } from '@game/flow';
-import { fieldResume } from '@game/state';
-import { MAPS, tileAt, isWall, findChar, MAP_W, MAP_H, type FieldMap } from '@game/data/maps';
+import { fieldResume, game, grantXp } from '@game/state';
+import { MAPS, tileAt, isWall, findChar, mapCols, mapRows, type FieldMap } from '@game/data/maps';
 import { NAMES as N } from '@game/data/names';
+import { ENCOUNTER_POOLS } from '@game/data/enemies';
+import { makeRng, pick } from '@core/rng';
 import { DialogBox } from '@app/ui/dialogbox';
 import { fadeInOnCreate, addMuteToggle, transitionTo, flash } from '@app/ui/fx';
 import { playSfx } from '@app/ui/sfx';
+import { paintScene } from '@app/ui/bg';
+import { TILE as RLT, addTile } from '@app/ui/tiles';
 
-const TILE = 72;
-const ENC_STEPS = 6;   // 何歩ごとに遭遇判定
-const ENC_MAX = 2;     // 遺構の遭遇回数
+const MAX_TILE = 72;   // 1マスの最大px（マップが大きい時は自動で縮める）
+const ENC_STEPS = 5;   // 何歩ごとに遭遇判定
+const ENC_MAX = 4;     // 遺構の遭遇回数（奥ほど手強い敵）
+
+// 「調べる」点（プロップの位置に重ねる）。隣接 or 同マスで [Z]。give があれば一度だけ入手（flag で重複防止）。
+interface Examine { x: number; y: number; who: string; lines: string[]; give?: { stones: number; xp: number; flag: string } }
+const EXAMINES: Record<string, Examine[]> = {
+  village: [
+    { x: 6, y: 2, who: N.wardStone, lines: ['里を守る古い魔石。…近くで見ると、光の脈がひどく細い。', `祖父いわく、これは「${N.device}」と対で里に遺されたものだという。`] },
+    { x: 3, y: 6, who: '', lines: ['収穫した薬草の木箱。乾いた草と土の匂い。…守りたい暮らしが、ここにある。'] },
+    { x: 9, y: 4, who: '', lines: ['古びた木箱。底に、子どもの落書きのような印。たぶんニナの仕業だ。'] },
+  ],
+  path: [
+    { x: 7, y: 3, who: '', lines: ['道端に咲く花。霧が薄れたせいか、近ごろよく見かける。'] },
+    { x: 11, y: 5, who: '', lines: ['打ち捨てられた荷車の残骸。誰かが急いで里へ逃げ帰った跡だろうか。'] },
+  ],
+  ruin: [
+    { x: 3, y: 7, who: '', lines: ['ひび割れた頭蓋骨。…遺構に挑んで還らなかった者だろうか。'] },
+    { x: 13, y: 3, who: '', lines: ['名も知れぬ墓標。歌の遺構は、いにしえの墓所でもあったらしい。'] },
+    { x: 5, y: 3, who: '', lines: ['枯れ果てた樹。魔素ならぬ“何か”に、生気を吸い取られたように見える。'] },
+    { x: 9, y: 1, who: '', lines: ['崩れた祭壇のくぼみに、小さな魔石が落ちている。…拾っておこう。'], give: { stones: 2, xp: 6, flag: 'ruin-cache' } },
+  ],
+};
 
 interface Talk { lines: string[]; who: string; i: number; onEnd?: () => void }
 
@@ -26,8 +50,10 @@ export class FieldScene extends Phaser.Scene {
   private talk: Talk | null = null;
   private ox = 0;
   private oy = 0;
+  private cols = 0;
+  private rows = 0;
+  private tile = MAX_TILE;
   private g!: Phaser.GameObjects.Graphics;
-  private labels!: Phaser.GameObjects.Container;
   private hud!: Phaser.GameObjects.Text;
   private box!: DialogBox;
 
@@ -48,13 +74,16 @@ export class FieldScene extends Phaser.Scene {
       this.px = s.x; this.py = s.y; this.step = 0; this.questGiven = false; this.encounters = 0;
     }
 
-    this.ox = (CANVAS_W - MAP_W * TILE) / 2;
-    this.oy = (CANVAS_H - MAP_H * TILE) / 2 + 8;
+    this.cols = mapCols(this.map);
+    this.rows = mapRows(this.map);
+    this.tile = Math.floor(Math.min(MAX_TILE, (CANVAS_W - 40) / this.cols, (CANVAS_H - 96) / this.rows));
+    this.ox = (CANVAS_W - this.cols * this.tile) / 2;
+    this.oy = (CANVAS_H - this.rows * this.tile) / 2 + 8;
 
-    this.add.rectangle(0, 0, CANVAS_W, CANVAS_H, 0x070a12).setOrigin(0);
-    this.g = this.add.graphics();
-    this.labels = this.add.container(0, 0);
-    this.hud = this.add.text(this.ox, 18, '', { fontFamily: 'sans-serif', fontSize: '20px', color: COLORS.text });
+    paintScene(this, this.map.id === 'ruin' ? 'ruin' : 'village');
+    this.buildStatic();
+    this.g = this.add.graphics().setDepth(10); // プレイヤー/NPCトークンはタイルの上
+    this.hud = this.add.text(this.ox, 18, '', { fontFamily: 'sans-serif', fontSize: '20px', color: COLORS.text }).setDepth(20);
     this.box = new DialogBox(this);
 
     this.input.keyboard?.on('keydown-UP', () => this.move(0, -1));
@@ -66,7 +95,7 @@ export class FieldScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.box.stop());
 
     addMuteToggle(this);
-    this.render();
+    this.updatePlayer(); this.updateHud();
   }
 
   private blocked(x: number, y: number): boolean {
@@ -86,11 +115,11 @@ export class FieldScene extends Phaser.Scene {
     if (t === 'E') { this.tryExit(); return; }
     if (t === 'B') { advance(this); return; } // 番獣戦へ
 
-    if (this.map.id === 'ruin' && this.encounters < ENC_MAX && this.step >= ENC_STEPS) {
+    if (ENCOUNTER_POOLS[this.map.id] && this.encounters < ENC_MAX && this.step >= ENC_STEPS) {
       this.triggerEncounter();
       return;
     }
-    this.render();
+    this.updatePlayer(); this.updateHud();
   }
 
   private tryExit(): void {
@@ -107,7 +136,12 @@ export class FieldScene extends Phaser.Scene {
     fieldResume.mapId = this.map.id;
     fieldResume.x = this.px; fieldResume.y = this.py;
     fieldResume.questGiven = this.questGiven; fieldResume.encounters = this.encounters;
-    const enemyId = this.encounters === 1 ? 'mob1' : 'mob2';
+    // 奥へ進む（遭遇回数が増える）ほど強い敵まで出る。種は決定論（リトライで同じ）。
+    const table = ENCOUNTER_POOLS[this.map.id] ?? ['mob1'];
+    const depth = Math.min(this.encounters, table.length);
+    const pool = table.slice(0, depth);
+    const r = makeRng(this.encounters * 1009 + 17);
+    const enemyId = pick(r, pool) ?? 'mob1';
     flash(this, 0xff5a6e, 200);
     playSfx('hit');
     transitionTo(this, 'Phys', { mode: 'encounter', enemyId });
@@ -119,15 +153,59 @@ export class FieldScene extends Phaser.Scene {
     for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]] as const) {
       const t = tileAt(this.map, this.px + dx, this.py + dy);
       if (t === 'G') { this.talkElder(); return; }
-      if (t === 'N') { this.openTalk(N.friend, ['無茶しないでよ。…あたしは里に残って、守りを見てる。']); return; }
+      if (t === 'N') {
+        this.openTalk(N.friend, this.questGiven
+          ? ['南の出口から遺構へ行けるよ。…無茶はしないで。', 'あたしは里に残って、守りを見てる。あんたが帰る場所は、ちゃんと守るから。']
+          : ['守り石の光、昔はもっと暖かかったんだけどね。', 'おじいさんが待ってる。…早く行ってあげて。']);
+        return;
+      }
+    }
+    // NPCが居なければ「調べる」点（同マス/隣接）
+    const ex = this.examineAt();
+    if (ex) {
+      if (ex.give && !game.flags[ex.give.flag]) {
+        const g = ex.give;
+        this.openTalk(ex.who, ex.lines, () => {
+          game.flags[g.flag] = true;
+          game.stones += g.stones;
+          const xr = grantXp(g.xp);
+          this.updateHud();
+          this.openTalk('', xr.leveledUp
+            ? [`魔石+${g.stones}・経験+${g.xp}。★レベルアップ Lv.${xr.to}！`]
+            : [`魔石+${g.stones}・経験+${g.xp}（所持:${game.stones}）。`]);
+        });
+      } else if (ex.give) {
+        this.openTalk('', ['…もう何も残っていない。']);
+      } else {
+        this.openTalk(ex.who, ex.lines);
+      }
     }
   }
 
+  /** 同マス/隣接の「調べる」点を返す。 */
+  private examineAt(): Examine | null {
+    const pts = EXAMINES[this.map.id] ?? [];
+    for (const [dx, dy] of [[0, 0], [0, -1], [0, 1], [-1, 0], [1, 0]] as const) {
+      const p = pts.find((e) => e.x === this.px + dx && e.y === this.py + dy);
+      if (p) return p;
+    }
+    return null;
+  }
+
   private talkElder(): void {
+    if (this.questGiven) {
+      this.openTalk(N.elder, [
+        `気をつけてな。遺構の魔物は、奥へ行くほど手強くなる。`,
+        `だが恐れるな。戦うたび、お前の意志は太くなる。倒れても立ち上がればいい。`,
+      ]);
+      return;
+    }
     this.openTalk(N.elder, [
-      `${N.heroDefault}。${N.wardStone}が、もう保たん。`,
-      `古い歌に言う——強い魔物の体内には、大きな魔石がある。${N.ruin}の奥に、ひときわ強いのが棲むそうだ。`,
-      'そいつを狩って、大きな魔石を持ち帰れ。南の出口から遺構へ向かうといい。',
+      `${N.heroDefault}、よく来た。…見ての通り、${N.wardStone}が、もう保たん。`,
+      `この石は遠い昔、旅の者が「${N.device}」とともに里へ遺したものだ。仕組みは誰も知らん。ただ光が、魔物を退けてきた。`,
+      `古い歌に言う——強い魔物の体内には、大きな魔石が宿ると。${N.ruin}の最奥に、ひときわ強いのが棲むそうだ。`,
+      `そいつを狩り、大きな魔石を持ち帰れ。据炉にくべれば、守り石はまた灯るはず。南の出口から遺構へ。`,
+      `…無理はするな。お前にもしものことがあれば、わしはニナに合わせる顔がない。`,
     ], () => { this.questGiven = true; });
   }
 
@@ -135,7 +213,7 @@ export class FieldScene extends Phaser.Scene {
     this.talk = { who, lines, i: 0, onEnd };
     playSfx('confirm');
     this.box.show(who, lines[0] ?? '');
-    this.render();
+    this.updatePlayer(); this.updateHud();
   }
 
   private advanceTalk(): void {
@@ -147,41 +225,92 @@ export class FieldScene extends Phaser.Scene {
       this.talk = null;
       this.box.setVisible(false);
       end?.();
-      this.render();
+      this.updatePlayer(); this.updateHud();
       return;
     }
     this.box.show(this.talk.who, this.talk.lines[this.talk.i] ?? '');
   }
 
+  private mapName(): string {
+    return this.map.id === 'village' ? N.village : this.map.id === 'path' ? '森の小道' : N.ruin;
+  }
+
   private objective(): string {
-    if (this.map.id === 'village') return this.questGiven ? '▶ 南の出口[E]から遺構へ' : `▶ ${N.elder}に話しかけよう（隣でZ）`;
+    if (this.map.id === 'village') return this.questGiven ? '▶ 南の出口[E]から森の小道へ' : `▶ ${N.elder}に話しかけよう（隣でZ）`;
+    if (this.map.id === 'path') return '▶ 東の出口[E]から歌の遺構へ（[Z]で調べる）';
     return '▶ 遺構の奥、番獣[B]を目指せ';
   }
 
-  private render(): void {
-    const g = this.g;
-    g.clear();
-    this.labels.removeAll(true);
+  private cx(x: number): number { return this.ox + x * this.tile + this.tile / 2; }
+  private cy(y: number): number { return this.oy + y * this.tile + this.tile / 2; }
 
-    for (let y = 0; y < MAP_H; y++) {
-      for (let x = 0; x < MAP_W; x++) {
+  /** タイル地形＋NPC＋小物を一度だけ敷く（静的）。プレイヤーだけ毎手番動かす。 */
+  private buildStatic(): void {
+    const outdoors = this.map.id !== 'ruin';   // 里・森は草地＋木の囲い、遺構は石畳＋墓石
+    const floorFrame = outdoors ? RLT.grass : RLT.stone;
+    const T = this.tile;
+
+    for (let y = 0; y < this.rows; y++) {
+      for (let x = 0; x < this.cols; x++) {
         const t = tileAt(this.map, x, y);
-        const wall = t === '#';
-        g.fillStyle(wall ? 0x1b2236 : 0x0d1322, 1).fillRect(this.ox + x * TILE, this.oy + y * TILE, TILE - 2, TILE - 2);
-        if (t === 'E') { g.fillStyle(0x57d977, 0.85).fillRect(this.ox + x * TILE + 18, this.oy + y * TILE + 18, TILE - 38, TILE - 38); }
-        if (t === 'B') { g.fillStyle(0xff5a6e, 0.9).fillCircle(this.ox + x * TILE + TILE / 2, this.oy + y * TILE + TILE / 2, 22); }
-        if (t === 'G' || t === 'N') {
-          g.fillStyle(t === 'G' ? 0xffd089 : 0x9ec5ff, 1).fillCircle(this.ox + x * TILE + TILE / 2, this.oy + y * TILE + TILE / 2, 20);
-          this.labels.add(this.add.text(this.ox + x * TILE + TILE / 2, this.oy + y * TILE - 6, t === 'G' ? N.elder : N.friend, {
+        addTile(this, this.cx(x), this.cy(y), floorFrame, T);             // 床は全マスに敷く
+        if (t === '#') {
+          // 壁＝里は森（木）、遺構は石畳の上に墓石/枯れ木
+          addTile(this, this.cx(x), this.cy(y), outdoors ? RLT.tree : RLT.grave, T);
+        } else if (t === 'E') {
+          addTile(this, this.cx(x), this.cy(y), RLT.dirt, T);
+          addTile(this, this.cx(x), this.cy(y - 0.02), RLT.sign, T * 0.9);
+        } else if (t === 'B') {
+          addTile(this, this.cx(x), this.cy(y), RLT.statue, T);           // 番獣の座＝石像/祭壇
+        } else if (t === 'G' || t === 'N') {
+          this.add.text(this.cx(x), this.cy(y) - T * 0.42, t === 'G' ? N.elder : N.friend, {
             fontFamily: 'sans-serif', fontSize: '13px', color: COLORS.dim,
-          }).setOrigin(0.5));
+          }).setOrigin(0.5).setDepth(5);
         }
       }
     }
-    // プレイヤー
-    g.fillStyle(0x6fe3ff, 1).fillCircle(this.ox + this.px * TILE + TILE / 2, this.oy + this.py * TILE + TILE / 2, 22);
-    g.lineStyle(3, 0xffffff, 0.8).strokeCircle(this.ox + this.px * TILE + TILE / 2, this.oy + this.py * TILE + TILE / 2, 22);
 
-    this.hud.setText(`${this.map.id === 'village' ? N.village : N.ruin}    ${this.objective()}    [矢印]移動 [Z]調べる`);
+    // 雰囲気の小物（固定配置・歩行に影響しない装飾）。
+    if (this.map.id === 'village') {
+      addTile(this, this.cx(6), this.cy(2), RLT.crystal, T * 0.8);        // 守り石（弱まりつつある）
+      addTile(this, this.cx(2), this.cy(4), RLT.flowers, T);
+      addTile(this, this.cx(10), this.cy(5), RLT.flowers, T);
+      addTile(this, this.cx(3), this.cy(6), RLT.crate, T * 0.85);
+      addTile(this, this.cx(9), this.cy(4), RLT.crate, T * 0.85);
+    } else if (this.map.id === 'path') {
+      addTile(this, this.cx(7), this.cy(3), RLT.flowers, T);
+      addTile(this, this.cx(4), this.cy(5), RLT.flowers, T);
+      addTile(this, this.cx(11), this.cy(5), RLT.crate, T * 0.8);
+    } else {
+      addTile(this, this.cx(5), this.cy(3), RLT.deadTree, T);
+      addTile(this, this.cx(11), this.cy(5), RLT.deadTree, T);
+      addTile(this, this.cx(7), this.cy(7), RLT.deadTree, T);
+      addTile(this, this.cx(3), this.cy(7), RLT.skull, T * 0.7);
+      addTile(this, this.cx(13), this.cy(3), RLT.grave, T * 0.8);
+      addTile(this, this.cx(9), this.cy(1), RLT.skull, T * 0.7);
+    }
+  }
+
+  /** NPC/プレイヤーのトークン（人物アートは無いので記号トークンで表現）。 */
+  private updatePlayer(): void {
+    const g = this.g;
+    g.clear();
+    const rad = this.tile * 0.28;
+    // NPC は静的だがトークンは g に毎回描く（軽量）。
+    for (let y = 0; y < this.rows; y++) {
+      for (let x = 0; x < this.cols; x++) {
+        const t = tileAt(this.map, x, y);
+        if (t === 'G' || t === 'N') {
+          g.fillStyle(t === 'G' ? 0xffd089 : 0x9ec5ff, 1).fillCircle(this.cx(x), this.cy(y), rad);
+          g.lineStyle(2, 0x000000, 0.4).strokeCircle(this.cx(x), this.cy(y), rad);
+        }
+      }
+    }
+    g.fillStyle(0x6fe3ff, 1).fillCircle(this.cx(this.px), this.cy(this.py), rad + 2);
+    g.lineStyle(3, 0xffffff, 0.85).strokeCircle(this.cx(this.px), this.cy(this.py), rad + 2);
+  }
+
+  private updateHud(): void {
+    this.hud.setText(`${this.mapName()}  Lv.${game.level} HP${game.heroHpMax} 魔石${game.stones}   ${this.objective()}   [矢印]移動 [Z]調べる`);
   }
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { startPhys, strike, survivesStraightFight } from '@core/phys';
-import { PHYS_ENEMIES, PHYS_POWER } from '@game/data/enemies';
+import { PHYS_ENEMIES, PHYS_POWER, RUIN_ENCOUNTERS } from '@game/data/enemies';
+import { statsForLevel } from '@core/progress';
 
 describe('物理戦: 1ターン', () => {
   it('殴ると敵HPが power ぶん減る', () => {
@@ -38,8 +39,16 @@ describe('物理戦: バランス不変条件（第1幕が完走できる）', (
     expect(survivesStraightFight(30, PHYS_ENEMIES['boss']!, PHYS_POWER)).toBe(true);
   });
 
-  it('道中の雑魚も素手で勝てる', () => {
-    expect(survivesStraightFight(30, PHYS_ENEMIES['mob1']!, PHYS_POWER)).toBe(true);
-    expect(survivesStraightFight(30, PHYS_ENEMIES['mob2']!, PHYS_POWER)).toBe(true);
+  it('道中のどの遭遇敵もレベル1の素手で勝てる（成長前でも詰まない）', () => {
+    const base = statsForLevel(1);
+    for (const id of RUIN_ENCOUNTERS) {
+      expect(survivesStraightFight(base.hpMax, PHYS_ENEMIES[id]!, base.power)).toBe(true);
+    }
+  });
+
+  it('成長するほど番獣の撃破は速く・安全になる（火力が単調）', () => {
+    const boss = PHYS_ENEMIES['boss']!;
+    expect(survivesStraightFight(statsForLevel(1).hpMax, boss, statsForLevel(1).power)).toBe(true);
+    expect(survivesStraightFight(statsForLevel(5).hpMax, boss, statsForLevel(5).power)).toBe(true);
   });
 });
