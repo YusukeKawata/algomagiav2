@@ -9,8 +9,9 @@ import { TitleScene } from '@app/TitleScene';
 import { NameEntryScene } from '@app/NameEntryScene';
 import { StoryScene } from '@app/StoryScene';
 import { FieldScene } from '@app/FieldScene';
-import { PhysBattleScene } from '@app/PhysBattleScene';
-import { BoardScene } from '@app/BoardScene';
+import { BattleScene } from '@app/BattleScene';
+import { MenuScene } from '@app/MenuScene';
+import { ShopScene } from '@app/ShopScene';
 import { TheEndScene } from '@app/TheEndScene';
 
 const gameInstance = new Phaser.Game({
@@ -25,7 +26,7 @@ const gameInstance = new Phaser.Game({
   plugins: {
     scene: [{ key: 'rexUI', plugin: RexUIPlugin, mapping: 'rexUI' }],
   },
-  scene: [PreloadScene, TitleScene, NameEntryScene, StoryScene, FieldScene, PhysBattleScene, BoardScene, TheEndScene],
+  scene: [PreloadScene, TitleScene, NameEntryScene, StoryScene, FieldScene, BattleScene, MenuScene, ShopScene, TheEndScene],
 });
 
 // dev 限定: 実機目視スクリプト(playwright)が「いまどのシーンか」を読めるよう公開する。本番ビルドでは剥がれる。
