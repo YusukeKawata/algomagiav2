@@ -83,7 +83,28 @@ describe('魔石盤: 最初の1×1スロット＋ガロの魔石', () => {
   });
 });
 
-describe('ターン制戦闘: バランス不変条件（攻撃連打で勝てる＝詰まない）', () => {
+describe('ターン制戦闘: 強敵の「ためる→大攻撃」と看破', () => {
+  const bigEnemy = () => startCombat({ hpMax: 100, freeWillMax: 24, atk: 6, def: 0 }, { name: '番獣', hp: 100, atk: 5, weakness: 'ice', bigEvery: 2 });
+
+  it('bigEvery回ふつう攻撃→ためる(0・予兆)→次手番で2倍', () => {
+    let s = bigEnemy();
+    const r1 = enemyTurn(s); expect(r1.dealt).toBe(5); expect(r1.telegraph).toBe(false); s = r1.state;
+    const r2 = enemyTurn(s); expect(r2.telegraph).toBe(true); expect(r2.dealt).toBe(0); expect(r2.state.enemy.charging).toBe(true); s = r2.state;
+    const r3 = enemyTurn(s); expect(r3.big).toBe(true); expect(r3.dealt).toBe(10); expect(r3.state.enemy.charging).toBe(false);
+  });
+
+  it('看破(みやぶる)中は大攻撃も大幅軽減', () => {
+    let s = bigEnemy();
+    s = enemyTurn(s).state;          // ふつう
+    s = enemyTurn(s).state;          // ためる（予兆）
+    s = heroGuard(s).state;          // 看破
+    const r = enemyTurn(s);          // 大攻撃を看破で受ける
+    expect(r.big).toBe(true);
+    expect(r.dealt).toBe(Math.floor(10 * 0.25)); // 2
+  });
+});
+
+describe('ターン制戦闘: バランス不変条件（ふつうに戦えば勝てる＝詰まない）', () => {
   const base = statsForLevel(1);
   const fistHero = (level: number) => ({ hpMax: statsForLevel(level).hpMax, freeWillMax: statsForLevel(level).freeWillMax, atk: statsForLevel(level).power, def: 0 });
 

@@ -81,7 +81,7 @@ export class BattleScene extends Phaser.Scene {
     const e = ENEMIES[this.enemyId] ?? ENEMIES['mob1']!;
     return startCombat(
       { hpMax: maxHp(), freeWillMax: game.freeWillMax, atk: heroAtk(), def: heroDef() },
-      { name: e.name, hp: e.hp, atk: e.atk, weakness: e.weakness },
+      { name: e.name, hp: e.hp, atk: e.atk, weakness: e.weakness, bigEvery: e.bigEvery },
     );
   }
 
@@ -181,20 +181,27 @@ export class BattleScene extends Phaser.Scene {
     if (this.cs.outcome === 'win') { this.onWin(actionLog); return; }
     const e = enemyTurn(this.cs);
     this.cs = e.state;
+    const name = this.cs.enemy.name;
+
     if (e.dealt > 0) {
-      shake(this, 0.006, 140);
-      flash(this, 0xff5a6e, 110);
-      popupNumber(this, CANVAS_W / 2, CANVAS_H - 150, `${e.dealt}`, { color: '#ff8a9a' });
+      shake(this, e.big ? 0.013 : 0.006, e.big ? 200 : 140);
+      flash(this, 0xff5a6e, e.big ? 170 : 110);
+      popupNumber(this, CANVAS_W / 2, CANVAS_H - 150, `${e.dealt}`, { color: e.big ? '#ff5a6e' : '#ff8a9a', big: e.big });
     }
     game.heroHp = this.cs.hero.hp;
     game.freeWill = this.cs.hero.freeWill;
+
+    let react: string;
+    if (e.telegraph) { react = `${name}は力をためている…！ 次は大攻撃だ——[みやぶる]で受け流せ。`; playSfx('confirm'); }
+    else if (e.big) { react = e.guarded ? `${name}の大攻撃を看破！ 受け流した（${e.dealt}）。` : `${name}の大攻撃！ ${e.dealt}ダメージ。`; playSfx(e.guarded ? 'weak' : 'hurt'); }
+    else { react = `${name}の攻撃 ${e.guarded ? `${e.dealt}（看破！）` : e.dealt}`; playSfx('hurt'); }
+
     if (this.cs.outcome === 'lose') {
       playSfx('lose');
       this.phase = 'lose';
-      this.log = `${actionLog}…${this.cs.enemy.name}の反撃で倒れた。[Z]でやり直す`;
+      this.log = `${actionLog}…${name}に倒された。[Z]でやり直す`;
     } else {
-      playSfx('hurt');
-      this.log = `${actionLog}／${this.cs.enemy.name}の反撃 ${e.guarded ? `${e.dealt}（看破！）` : e.dealt}`;
+      this.log = `${actionLog}／${react}`;
     }
     this.render();
   }
@@ -245,6 +252,10 @@ export class BattleScene extends Phaser.Scene {
 
     // 敵トークン＋HPバー。
     const ehp = c.enemy.hp / c.enemy.maxHp;
+    if (c.enemy.charging) { // ためている予兆＝黄色い警告リング
+      g.lineStyle(4, 0xffd54f, 0.9).strokeCircle(EX, EY, 62);
+      g.lineStyle(2, 0xffd54f, 0.5).strokeCircle(EX, EY, 72);
+    }
     g.fillStyle(this.color, 1).fillCircle(EX, EY, 48);
     g.lineStyle(3, 0xff5a6e, 0.9).strokeCircle(EX, EY, 48);
     g.fillStyle(0x2a1620, 1).fillRect(EX - 180, EY + 68, 360, 16);
@@ -253,7 +264,7 @@ export class BattleScene extends Phaser.Scene {
     this.text.setText([
       `《戦闘》${this.intro}`,
       '',
-      `敵  ${c.enemy.name}   HP ${c.enemy.hp}/${c.enemy.maxHp}   弱点:${ATTR_LABEL[c.enemy.weakness]}`,
+      `敵  ${c.enemy.name}   HP ${c.enemy.hp}/${c.enemy.maxHp}   弱点:${ATTR_LABEL[c.enemy.weakness]}${c.enemy.charging ? '   ⚠ ためている！' : ''}`,
       '',
       `${game.heroName} Lv.${game.level}   HP ${Math.max(0, c.hero.hp)}/${c.hero.hpMax}   自由意志 ${c.hero.freeWill}/${c.hero.freeWillMax}`,
       `攻撃 ${c.hero.atk}  防御 ${c.hero.def}`,
