@@ -4,6 +4,8 @@ import { CANVAS_W, COLORS } from '@app/theme';
 import { resetGame } from '@game/state';
 import { setFlowIndex, route } from '@game/flow';
 import { hasSave, loadSave, clearSave } from '@game/save';
+import { fadeInOnCreate, addMuteToggle, transitionTo } from '@app/ui/fx';
+import { playSfx } from '@app/ui/sfx';
 
 export class TitleScene extends Phaser.Scene {
   private items: string[] = [];
@@ -13,6 +15,7 @@ export class TitleScene extends Phaser.Scene {
   constructor() { super('Title'); }
 
   create(): void {
+    fadeInOnCreate(this);
     this.add.text(CANVAS_W / 2, 200, 'Algomagia', {
       fontFamily: 'serif', fontSize: '72px', color: COLORS.text,
     }).setOrigin(0.5);
@@ -26,10 +29,11 @@ export class TitleScene extends Phaser.Scene {
       fontFamily: 'monospace', fontSize: '26px', color: COLORS.text, align: 'center', lineSpacing: 14,
     }).setOrigin(0.5);
 
-    this.input.keyboard?.on('keydown-UP', () => { this.sel = (this.sel + this.items.length - 1) % this.items.length; this.refresh(); });
-    this.input.keyboard?.on('keydown-DOWN', () => { this.sel = (this.sel + 1) % this.items.length; this.refresh(); });
+    this.input.keyboard?.on('keydown-UP', () => { this.sel = (this.sel + this.items.length - 1) % this.items.length; playSfx('move'); this.refresh(); });
+    this.input.keyboard?.on('keydown-DOWN', () => { this.sel = (this.sel + 1) % this.items.length; playSfx('move'); this.refresh(); });
     this.input.keyboard?.on('keydown-Z', () => this.choose());
     this.input.keyboard?.on('keydown-ENTER', () => this.choose());
+    addMuteToggle(this);
     this.refresh();
   }
 
@@ -38,6 +42,7 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private choose(): void {
+    playSfx('confirm');
     const pick = this.items[this.sel];
     if (pick === 'つづきから') {
       const i = loadSave();
@@ -45,6 +50,6 @@ export class TitleScene extends Phaser.Scene {
     }
     resetGame();
     clearSave();
-    this.scene.start('Name');
+    transitionTo(this, 'Name');
   }
 }

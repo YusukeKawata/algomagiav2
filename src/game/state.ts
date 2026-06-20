@@ -17,8 +17,8 @@ export const game: GameState = makeFresh();
 function makeFresh(): GameState {
   return {
     heroName: NAMES.heroDefault,
-    heroHpMax: 24,
-    heroHp: 24,
+    heroHpMax: 30,
+    heroHp: 30,
     freeWillMax: 24,
     stones: 0,
     skillUnlocked: false,

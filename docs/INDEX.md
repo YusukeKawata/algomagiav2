@@ -7,6 +7,7 @@
 |---|---|
 | 作業を再開する（現状・次の一手） | [HANDOVER.md](../HANDOVER.md) → [WORKPLAN.md](../WORKPLAN.md) |
 | **基盤決定（なぜ作り直し・技術・テーマ・二軸）** | [adr/0001-v2-foundation.md](adr/0001-v2-foundation.md) |
+| **シーン/演出のテンプレ（第2幕はこれに乗る）** | [design/scene-template.md](design/scene-template.md) |
 | 世界観（正典・決定論SQ vs 自由意志exSQ） | [design/world-bible.md](design/world-bible.md) |
 | 中核思想（何を作っているか） | [design/game-design-philosophy.md](design/game-design-philosophy.md) |
 | スキル=関数・防御=予測（看破の根） | [design/skill-concept.md](design/skill-concept.md) |

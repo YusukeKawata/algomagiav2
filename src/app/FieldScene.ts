@@ -6,6 +6,9 @@ import { currentBeat, advance } from '@game/flow';
 import { fieldResume } from '@game/state';
 import { MAPS, tileAt, isWall, findChar, MAP_W, MAP_H, type FieldMap } from '@game/data/maps';
 import { NAMES as N } from '@game/data/names';
+import { DialogBox } from '@app/ui/dialogbox';
+import { fadeInOnCreate, addMuteToggle, transitionTo, flash } from '@app/ui/fx';
+import { playSfx } from '@app/ui/sfx';
 
 const TILE = 72;
 const ENC_STEPS = 6;   // 何歩ごとに遭遇判定
@@ -26,10 +29,12 @@ export class FieldScene extends Phaser.Scene {
   private g!: Phaser.GameObjects.Graphics;
   private labels!: Phaser.GameObjects.Container;
   private hud!: Phaser.GameObjects.Text;
+  private box!: DialogBox;
 
   constructor() { super('Field'); }
 
   create(data?: { resume?: boolean }): void {
+    fadeInOnCreate(this);
     const beat = currentBeat();
     const mapId = beat?.kind === 'field' ? beat.mapId : 'village';
     this.map = MAPS[mapId]!;
@@ -50,6 +55,7 @@ export class FieldScene extends Phaser.Scene {
     this.g = this.add.graphics();
     this.labels = this.add.container(0, 0);
     this.hud = this.add.text(this.ox, 18, '', { fontFamily: 'sans-serif', fontSize: '20px', color: COLORS.text });
+    this.box = new DialogBox(this);
 
     this.input.keyboard?.on('keydown-UP', () => this.move(0, -1));
     this.input.keyboard?.on('keydown-DOWN', () => this.move(0, 1));
@@ -57,7 +63,9 @@ export class FieldScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-RIGHT', () => this.move(1, 0));
     this.input.keyboard?.on('keydown-Z', () => this.interact());
     this.input.keyboard?.on('keydown-ENTER', () => this.interact());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.box.stop());
 
+    addMuteToggle(this);
     this.render();
   }
 
@@ -72,6 +80,7 @@ export class FieldScene extends Phaser.Scene {
     if (this.blocked(nx, ny)) return;
     this.px = nx; this.py = ny;
     this.step++;
+    playSfx('move');
 
     const t = tileAt(this.map, nx, ny);
     if (t === 'E') { this.tryExit(); return; }
@@ -99,7 +108,9 @@ export class FieldScene extends Phaser.Scene {
     fieldResume.x = this.px; fieldResume.y = this.py;
     fieldResume.questGiven = this.questGiven; fieldResume.encounters = this.encounters;
     const enemyId = this.encounters === 1 ? 'mob1' : 'mob2';
-    this.scene.start('Phys', { mode: 'encounter', enemyId });
+    flash(this, 0xff5a6e, 200);
+    playSfx('hit');
+    transitionTo(this, 'Phys', { mode: 'encounter', enemyId });
   }
 
   private interact(): void {
@@ -122,18 +133,24 @@ export class FieldScene extends Phaser.Scene {
 
   private openTalk(who: string, lines: string[], onEnd?: () => void): void {
     this.talk = { who, lines, i: 0, onEnd };
+    playSfx('confirm');
+    this.box.show(who, lines[0] ?? '');
     this.render();
   }
 
   private advanceTalk(): void {
     if (!this.talk) return;
+    if (this.box.press() === 'skipped') return; // 表示途中は全表示のみ（1入力=1アクション）
     this.talk.i++;
     if (this.talk.i >= this.talk.lines.length) {
       const end = this.talk.onEnd;
       this.talk = null;
+      this.box.setVisible(false);
       end?.();
+      this.render();
+      return;
     }
-    this.render();
+    this.box.show(this.talk.who, this.talk.lines[this.talk.i] ?? '');
   }
 
   private objective(): string {
@@ -166,23 +183,5 @@ export class FieldScene extends Phaser.Scene {
     g.lineStyle(3, 0xffffff, 0.8).strokeCircle(this.ox + this.px * TILE + TILE / 2, this.oy + this.py * TILE + TILE / 2, 22);
 
     this.hud.setText(`${this.map.id === 'village' ? N.village : N.ruin}    ${this.objective()}    [矢印]移動 [Z]調べる`);
-
-    if (this.talk) this.drawTalk();
-  }
-
-  private drawTalk(): void {
-    const t = this.talk!;
-    const boxY = CANVAS_H - 190;
-    this.g.fillStyle(0x0e1422, 0.97).fillRoundedRect(40, boxY, CANVAS_W - 80, 160, 14);
-    this.g.lineStyle(2, 0x2a3350, 1).strokeRoundedRect(40, boxY, CANVAS_W - 80, 160, 14);
-    if (t.who) {
-      this.labels.add(this.add.text(64, boxY - 30, t.who, {
-        fontFamily: 'sans-serif', fontSize: '20px', color: COLORS.accent, backgroundColor: '#0e1422', padding: { x: 10, y: 4 },
-      }));
-    }
-    this.labels.add(this.add.text(72, boxY + 30, t.lines[t.i] ?? '', {
-      fontFamily: 'sans-serif', fontSize: '23px', color: COLORS.text, lineSpacing: 8, wordWrap: { width: CANVAS_W - 150 },
-    }));
-    this.labels.add(this.add.text(CANVAS_W - 80, boxY + 130, '▼ [Z]', { fontFamily: 'monospace', fontSize: '16px', color: COLORS.dim }).setOrigin(1, 0.5));
   }
 }

@@ -1,8 +1,11 @@
-// 会話・物語・覚醒シーン。ACT1 の 'dialog'/'awaken' beat を1行ずつ送る。〔アート未〕立ち絵/背景は差し替え枠。
+// 会話・物語・覚醒シーン。ACT1 の 'dialog'/'awaken' beat を DialogBox で1文字ずつ送る。
+// 〔アート未〕立ち絵/背景は差し替え枠。覚醒だけ背景を暗く沈め、据炉の声を cold スタイルで出す。
 import Phaser from 'phaser';
-import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
+import { CANVAS_W, CANVAS_H } from '@app/theme';
 import { currentBeat, advance } from '@game/flow';
 import { game } from '@game/state';
+import { DialogBox } from '@app/ui/dialogbox';
+import { fadeInOnCreate, addMuteToggle } from '@app/ui/fx';
 
 interface Seg { who: string; text: string; cold?: boolean }
 
@@ -21,12 +24,12 @@ export class StoryScene extends Phaser.Scene {
   private segs: Seg[] = [];
   private i = 0;
   private isAwaken = false;
-  private nameText!: Phaser.GameObjects.Text;
-  private bodyText!: Phaser.GameObjects.Text;
+  private box!: DialogBox;
 
   constructor() { super('Story'); }
 
   create(): void {
+    fadeInOnCreate(this);
     const beat = currentBeat();
     this.isAwaken = beat?.kind === 'awaken';
     this.segs = this.isAwaken ? AWAKEN : (beat?.kind === 'dialog' ? beat.lines : []);
@@ -35,43 +38,28 @@ export class StoryScene extends Phaser.Scene {
     // 背景（覚醒は暗く沈める）。〔アート未〕差し替え枠。
     this.add.rectangle(0, 0, CANVAS_W, CANVAS_H, this.isAwaken ? 0x02030a : 0x0a0e1a).setOrigin(0);
 
-    const boxY = CANVAS_H - 210;
-    const g = this.add.graphics();
-    g.fillStyle(0x0e1422, 0.96).fillRoundedRect(40, boxY, CANVAS_W - 80, 180, 14);
-    g.lineStyle(2, 0x2a3350, 1).strokeRoundedRect(40, boxY, CANVAS_W - 80, 180, 14);
+    this.box = new DialogBox(this);
 
-    this.nameText = this.add.text(64, boxY - 34, '', {
-      fontFamily: 'sans-serif', fontSize: '22px', color: COLORS.accent,
-      backgroundColor: '#0e1422', padding: { x: 12, y: 5 },
-    });
-    this.bodyText = this.add.text(72, boxY + 28, '', {
-      fontFamily: 'sans-serif', fontSize: '24px', color: COLORS.text, lineSpacing: 10,
-      wordWrap: { width: CANVAS_W - 150 },
-    });
-    this.add.text(CANVAS_W - 80, CANVAS_H - 52, '▼ [Z]', {
-      fontFamily: 'monospace', fontSize: '18px', color: COLORS.dim,
-    }).setOrigin(1, 0.5);
-
-    const next = (): void => this.next();
+    const next = (): void => this.advanceLine();
     this.input.keyboard?.on('keydown-Z', next);
     this.input.keyboard?.on('keydown-ENTER', next);
     this.input.on('pointerdown', next);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.box.stop());
 
-    this.show();
+    addMuteToggle(this);
+    this.showCurrent();
   }
 
-  private show(): void {
+  private showCurrent(): void {
     const s = this.segs[this.i];
     if (!s) return;
-    this.nameText.setText(s.who).setVisible(s.who !== '');
-    this.bodyText.setColor(s.cold ? '#9fb6d6' : COLORS.text)
-      .setFontFamily(s.cold ? 'monospace' : 'sans-serif')
-      .setText(s.text);
+    this.box.show(s.who, s.text, { cold: s.cold });
   }
 
-  private next(): void {
+  private advanceLine(): void {
+    if (this.box.press() === 'skipped') return; // 表示途中なら全表示だけ（1入力=1アクション）
     this.i++;
-    if (this.i < this.segs.length) { this.show(); return; }
+    if (this.i < this.segs.length) { this.showCurrent(); return; }
     if (this.isAwaken) game.skillUnlocked = true; // 覚醒＝スキル解禁
     advance(this);
   }

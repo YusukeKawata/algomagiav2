@@ -1,11 +1,14 @@
 // 第1幕スライスの終わり。[Z] でタイトルへ。
 import Phaser from 'phaser';
 import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
+import { fadeInOnCreate, addMuteToggle, transitionTo } from '@app/ui/fx';
+import { playSfx } from '@app/ui/sfx';
 
 export class TheEndScene extends Phaser.Scene {
   constructor() { super('TheEnd'); }
 
   create(): void {
+    fadeInOnCreate(this, 600);
     this.add.rectangle(0, 0, CANVAS_W, CANVAS_H, 0x05060d).setOrigin(0);
     this.add.text(CANVAS_W / 2, CANVAS_H / 2 - 30, '第1幕 ——「霧の里」 おわり', {
       fontFamily: 'serif', fontSize: '40px', color: COLORS.text,
@@ -17,7 +20,9 @@ export class TheEndScene extends Phaser.Scene {
       fontFamily: 'monospace', fontSize: '18px', color: COLORS.accent,
     }).setOrigin(0.5);
 
-    this.input.keyboard?.once('keydown-Z', () => this.scene.start('Title'));
-    this.input.once('pointerdown', () => this.scene.start('Title'));
+    const toTitle = (): void => { playSfx('confirm'); transitionTo(this, 'Title'); };
+    this.input.keyboard?.once('keydown-Z', toTitle);
+    this.input.once('pointerdown', toTitle);
+    addMuteToggle(this);
   }
 }

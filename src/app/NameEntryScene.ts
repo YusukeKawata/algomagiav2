@@ -4,6 +4,8 @@ import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
 import { game } from '@game/state';
 import { NAMES } from '@game/data/names';
 import { startFlow, route } from '@game/flow';
+import { fadeInOnCreate, addMuteToggle } from '@app/ui/fx';
+import { playSfx } from '@app/ui/sfx';
 
 export class NameEntryScene extends Phaser.Scene {
   private name = '';
@@ -12,6 +14,7 @@ export class NameEntryScene extends Phaser.Scene {
   constructor() { super('Name'); }
 
   create(): void {
+    fadeInOnCreate(this);
     this.name = '';
     this.add.rectangle(0, 0, CANVAS_W, CANVAS_H, 0x070a12).setOrigin(0);
     this.add.text(CANVAS_W / 2, 220, 'なまえを いれてください', {
@@ -25,19 +28,21 @@ export class NameEntryScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     this.input.keyboard?.on('keydown', (e: KeyboardEvent) => this.onKey(e));
+    addMuteToggle(this);
     this.refresh();
   }
 
   private onKey(e: KeyboardEvent): void {
     if (e.key === 'Enter') {
       game.heroName = this.name.trim() || NAMES.heroDefault;
+      playSfx('confirm');
       startFlow();
       route(this);
       return;
     }
-    if (e.key === 'Backspace') { this.name = this.name.slice(0, -1); this.refresh(); return; }
+    if (e.key === 'Backspace') { this.name = this.name.slice(0, -1); playSfx('cancel'); this.refresh(); return; }
     if (e.key.length === 1 && this.name.length < 8 && /[A-Za-z0-9ぁ-んァ-ンー一-龠]/.test(e.key)) {
-      this.name += e.key; this.refresh();
+      this.name += e.key; playSfx('move'); this.refresh();
     }
   }
 

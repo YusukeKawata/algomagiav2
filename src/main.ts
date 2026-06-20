@@ -12,7 +12,7 @@ import { PhysBattleScene } from '@app/PhysBattleScene';
 import { BoardScene } from '@app/BoardScene';
 import { TheEndScene } from '@app/TheEndScene';
 
-new Phaser.Game({
+const gameInstance = new Phaser.Game({
   type: Phaser.AUTO,
   width: CANVAS_W,
   height: CANVAS_H,
@@ -25,3 +25,9 @@ new Phaser.Game({
   },
   scene: [TitleScene, NameEntryScene, StoryScene, FieldScene, PhysBattleScene, BoardScene, TheEndScene],
 });
+
+// dev 限定: 実機目視スクリプト(playwright)が「いまどのシーンか」を読めるよう公開する。本番ビルドでは剥がれる。
+const DEV = (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV ?? false;
+if (DEV) {
+  (window as Window & { __game?: Phaser.Game }).__game = gameInstance;
+}
