@@ -15,6 +15,17 @@ v2 がv1実装からズレすぎたため、混乱を避けて**殻（UI/物語/
 **背景＝手続き生成(`bg.ts`)／フィールド＝Kenneyタイル(`tiles.ts`)**。人物は色トークン（立ち絵素材は未供給）。
 通しは `.claude/tmp/autoplay.cjs`（dev限定 `window.__game`/`__state`/`__flow` を読みつつBFS+anti-stuckで自動操作）で **TheEnd到達・戦闘10回・pageエラーゼロ**を確認。core 44テスト/typecheck/build 緑。
 
+### 2026-06-21 RPG大改修（ターン制戦闘・ゴールド経済・店・装備・魔石盤の作り替え）〔ponti指示で実施〕
+プレイ→診断→改善の自走で、第1幕を「ふつうのRPGの殻」に整えた。**core 54テスト/typecheck/build 緑、autoplay2 で TheEnd 到達・pageエラー0**（L1→L5・戦闘6・G15→74）。
+
+- **戦闘＝ターン制（ドラクエ風）に統一**：`core/combat.ts`（+テスト）。コマンド＝**こうげき(武器)/スキル(魔石盤の回路)/どうぐ/みやぶる(看破=予測防御)**。ヒーローは HP（耐久）＋自由意志（スキル燃料）。HP0で敗北・retryは全回復。**物理戦/盤戦の2シーンを廃止し `BattleScene` 1本に統合**（`PhysBattleScene`/`BoardScene` 削除）。覚醒前はスキル不可（攻撃で勝てる＝詰まないをテストで担保）。
+- **魔石＝ドロップ品をやりくり（文様は変更不可）**：`game.stones` を **Stone[] インベントリ**化。敵撃破で `STONE_POOLS` から1個ドロップ（決定論）。**ガロが最初に手渡す魔石＝「─・物理・魔素量1」**（クエスト受領時に入手）。**盤は 1×1 スタート**（`mind/compute`＝心域/演算）。
+- **魔石盤の編集は戦闘外へ分離**（「はめる画面に戦闘は不要」）。メニュー[C]の「魔石盤」タブで配置/取り外し（カーソル＋picking）。属性は選べない＝拾った魔石の文様で回路を組む。
+- **ゴールド経済＋店＋装備**：通貨＝ゴールドのみ。里に**道具屋/武器屋/防具屋**（行商人・`shops.ts`）。`MenuScene`（ステータス/そうび/魔石盤/どうぐ）と `ShopScene`（買う/売る・**魔石を売ってG化**）。**武器(atk)/防具(def,hpBonus)** は魔石と別系統＝`heroAtk()/heroDef()/maxHp()`。
+- **マップ自由往来**：`maps.ts` に `exits`（出口タイル→行き先＋到着座標）。里[E]↔小道[w/e]↔遺構[w] を行き来。フィールドは linear flow から分離し、**里南口[E]＝覚醒前はクエスト確認/覚醒後は番獣戦の引き金**、遺構[B]＝ボス、で flow を進める。クエストは `game.flags.quest`。
+- **モンスター改名**（モンスターらしく・正体は伏せる・「石」を付けない）：霧狼/群れ狼/岩噛み/淀みの影/双角獣/遺構の番獣、盤敵＝氷狼/雷甲虫/疾風鳥。
+- 自動プレイ＝`.claude/tmp/autoplay2.cjs`（新フロー対応・Battleはz連打＝攻撃で勝てる）。メニュー/店の目視＝`.claude/tmp/shotmenu.cjs`（`m-*.png`）。**旧 `autoplay.cjs` は旧シーン用で動かない**。
+
 ### 2026-06-20 探索拡張（森の小道＋調べる）
 - **新エリア「森の小道」**：里→遺構の道中マップ `path`（15×9・木の柵）。`script.ts` に field beat を挿入。軽い遭遇（`PATH_ENCOUNTERS`）。遭遇は `ENCOUNTER_POOLS`（mapId→敵表）で汎用化。
 - **「調べる」システム**：プロップに重なる `EXAMINES`（里/小道/遺構）を [Z] で読める＝世界観の小出し。遺構に**一度きりの魔石拾得**（flagで重複防止・魔石+経験）。
@@ -66,17 +77,17 @@ v2 がv1実装からズレすぎたため、混乱を避けて**殻（UI/物語/
 
 > 方針：プレイ→診断→改善→検証(typecheck/test/build＋autoplay)→次の改善、を**自走で回す**。下は優先順（上から着手推奨）。
 
-1. **敵のレベルスケール（最優先・作業ゲー化の防止）**：成長で敵が一瞬で溶けないよう、ボス/盤敵を `game.level` で軽くスケール。**不変条件**：retryは全回復・決定論なので「到達レベルで必ず勝てる」をテストで担保（`phys.test.ts`/`board-fight.test.ts` に level別ケースを足す）。`enemies.ts` に scale 関数＋ core で winnable をテスト。
-2. **盤の属性チュートリアル＋弱点ちがいの盤戦**：`enemies.ts` に未使用の `spark`(風弱点)/`gale`(雷弱点)あり。今の盤戦は全部**炎弱点**で初期炎盤のまま勝てる＝盤編集を一度も触らない。属性を足す手ほどき＋弱点ちがいの敵を1戦。**softlock厳禁**：初期盤のままでも（弱点無しでも）勝てる freeWill かをテストで担保してから出す。
-3. **村のサブNPC/会話を増やす**：`maps.ts` の村に NPC タイル追加（`'G'/'N'` と同様に blocked/描画/interact を一般化すると楽）。世界観の厚み。
-4. **BGM（手続き合成）**：`sfx.ts` と同じ WebAudio で。シーン別に静かなループ。[M]ミュート連動。
-5. **第2幕の入口**：第二の里(地中)・魔石工房の集積UI（盤に駒を恒久配置して育てる）。新シーンは [scene-template.md](docs/design/scene-template.md) に乗せる。
+1. **戦闘に駆け引きを足す（最優先・作業ゲー化の防止）**：今は「こうげき連打」で勝てる＝スキル/弱点/看破/道具の価値が薄い。敵に**行動パターン/強めの攻撃**を持たせ、看破(みやぶる)や弱点スキルが効く設計に。`enemies.ts` を `game.level` で軽くスケール。**不変条件**＝`core/combat.ts autoWinnable` を level別に緑（攻撃のみでも詰まない）に保つ。
+2. **盤の成長＝第2幕の核**：`setBoardSize(mind,compute)` は実装済。拡張トリガ（成長アイテム/物語ビート）と、複数駒で長い/並列回路を組む手応えを出す。**softlock厳禁**：盤が空/弱くても攻撃で勝てる保証をテストで先に。
+3. **店/装備/道具のバランスと拡充**：価格・性能カーブ、状態異常薬、終盤装備。ゴールド収支（ドロップ/売却 vs 物価）の調整。`equipment.ts`/`items.ts`/`shops.ts`/`stones.ts`。
+4. **村のサブNPC/会話を増やす＋第2幕の入口**：第二の里(地中)・魔石工房の集積UI。新シーンは [scene-template.md](docs/design/scene-template.md) に乗せる。マップ往来(`exits`)は拡張済なので新マップ追加が楽。
+5. **BGM（手続き合成）**：`sfx.ts` と同じ WebAudio で。シーン別に静かなループ。[M]ミュート連動。立ち絵アートは差し替え枠のまま。
 
 着手前に読む: [docs/design/scene-template.md](docs/design/scene-template.md)（シーン/演出/アセットの規約・**bg.ts/tiles.ts/成長の入口**を明記）／[magic-stone-workshop.md](docs/design/magic-stone-workshop.md)（盤の正典）／[ADR-0001](docs/adr/0001-v2-foundation.md)（基盤）。
 
 ### 通しプレイ計測（このマシン＝user `ponti`）
-`.claude/tmp/autoplay.cjs`：dev限定 `window.__game`/`__state`/`__flow(flowIndex)` を読みつつ **BFS+anti-stuck** で自動操作し、シーン/beat/level/xp/stones をトレース＆スクショ＆pageエラー収集。
-- 実行：`npm run dev -- --port 5188 --strictPort` を起動 → `node .claude/tmp/autoplay.cjs`（出力 JSON＋TRAIL、`a-*.png`）。
+**`.claude/tmp/autoplay2.cjs`（新フロー対応・現行）**：dev限定 `window.__game`/`__state`/`__flow(flowIndex)` を読み、フィールドはBFS、戦闘はz連打（=こうげき）で **TheEnd まで自走**＆スクショ(`b-*.png`)＆pageエラー収集。メニュー/店の目視は `.claude/tmp/shotmenu.cjs`（状態注入→`m-*.png`）。※旧 `autoplay.cjs` は廃止シーン用で動かない。
+- 実行：`npm run dev -- --port 5188 --strictPort` を起動 → `node .claude/tmp/autoplay2.cjs`（出力 JSON＋TRAIL）。
 - パス：chromium-1217 と playwright-core は **`C:/Users/ponti/...`**（旧 `drive.cjs` は別マシン `radiology` パスなので注意）。
 - 終わったら dev サーバを停止（PowerShell: `Get-NetTCPConnection -LocalPort 5188 -State Listen | %{ Stop-Process -Id $_.OwningProcess -Force }`）。
 - 静止画だけなら `.claude/tmp/shot*.cjs`。`.claude/tmp/grid.py` は Kenneyシートをグリッド可視化してタイル番地を採取する道具。
@@ -84,11 +95,12 @@ v2 がv1実装からズレすぎたため、混乱を避けて**殻（UI/物語/
 ## 再開のしかた
 ```
 npm install        # 初回のみ（phaser / phaser4-rex-plugins 含む）
-npm run test       # core 44件（progress/rng/board/battle/phys/board-fight/smoke）。緑を確認
+npm run test       # core 54件（combat/progress/rng/board/battle/phys/board-fight/smoke）。緑を確認
 npm run typecheck
 npm run build
-npm run dev        # フィールド: 矢印=移動 / [Z]=会話・調べる
-                   # 盤戦: 数字=駒の形 / qwer=属性 / 左ｸﾘｯｸ=置く / 右ｸﾘｯｸ=消す / ↑↓=撃つ回路を選ぶ / [F]=撃つ / [M]=ミュート
+npm run dev        # フィールド: 矢印=移動 / [Z]=会話・調べる・店を開く / [C]=メニュー / 出口タイル(E/w/e)で行き来
+                   # 戦闘: ↑↓で選択・[Z]決定（こうげき/スキル/どうぐ/みやぶる）・[X]戻る / [M]=ミュート
+                   # メニュー: [←→]タブ（ステータス/そうび/魔石盤/どうぐ）/ 魔石盤=矢印カーソル・[Z]で嵌める/外す
 ```
 
 ## ブラウザでの実機確認（UI）
@@ -100,6 +112,9 @@ Phaser は WebGL＝ヘッドレスChromeは既定で黒画面。`.claude/tmp/sho
 - **ADR-0001 v2 が基盤**。二軸（自由意志/魔石）・テーマ＝設計契約（実ops縛りは無し）・乱数はシード付き（`core/rng.ts` を使う。素の `Math.random`/`Date.now` 禁止）。
 - core は UI 非依存・テストで固める（v1 の良い規律は継承）。TS編集後は hooks が自動 typecheck。新ロジックは必ずテストを添える。
 - **シーン遷移は必ず `transitionTo(scene, key, data)`**。data 省略可だが内部で `data ?? {}` を必ず渡す＝**Phaserは start時にdata未指定だと前回のdataを使い回す**（この罠でボス戦が直前の遭遇mobとして起動していた。`fx.ts` のコメント参照）。直接 `scene.scene.start` しない。
-- **戦闘の不変条件＝「到達レベルで必ず勝てる」**。retryは全回復＆決定論なので勝てない数値にすると無限ループ。`enemies.ts`/`boards.ts` の数値を変えたら `core/phys.test.ts`/`board-fight.test.ts` を必ず緑に保つ（敵を強くするなら level別 winnable テストを足す）。
-- **成長の単一窓口は `state.ts` の `grantXp()`/`physPower()`**（core は `progress.ts`）。HP/火力/自由意志を直接いじらない。
+- **戦闘は `core/combat.ts`（ターン制）が単一の正**。物理戦/盤戦は廃止＝`BattleScene` 1本。**不変条件＝「到達レベルで攻撃連打で勝てる」**（retryは全回復＆決定論。`autoWinnable`）。`enemies.ts` の数値を変えたら `core/combat.test.ts` を緑に保つ。※ 旧 `phys.ts/battle.ts/board-fight.test.ts` は未使用だがテスト資産として残置（混同しない）。
+- **状態の単一窓口は `state.ts`**：`grantXp()`/`physPower()`/`heroAtk()`/`heroDef()`/`maxHp()`（成長は core `progress.ts`）。魔石＝`stones: Stone[]`、装備＝`weaponId/armorId`＋`ownedWeapons/ownedArmors`、盤＝`board`(`mind×compute`)。HP/火力/自由意志/盤を直接いじらず helper 経由。
+- **メニュー/店はポーズ・オーバーレイ**（`scene.launch`＋`scene.pause`、閉じる時 `scene.resume('Field')`）。フィールドの[C]/店タイル[Z]から開く。
+- **魔石盤は 1×1 スタート・文様は変更不可**（ドロップ品をやりくり）。編集は戦闘外（メニュー）。盤の成長（心域/演算で拡張）は第2幕の宿題。
+- **マップ往来は `maps.ts` の `exits`**（出口タイル→行き先＋到着座標）。フィールドの進行ゲートは「里南口[E]（覚醒後は番獣戦の引き金）」「遺構[B]」。クエスト＝`game.flags.quest`。**セーブは v2**（旧v1セーブは破棄される）。
 - 旧プロジェクト `../20260608_algomagia` は改変しない（アーカイブ）。`art-src/`（Kenney生パック）は gitignore＝配信は `public/assets/` のみ。

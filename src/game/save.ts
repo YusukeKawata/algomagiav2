@@ -3,10 +3,11 @@
 import { game, type GameState } from '@game/state';
 
 const KEY = 'algomagia-v2-save';
-interface SaveData { v: 1; idx: number; game: GameState }
+const SAVE_V = 2 as const; // 2: ゴールド/魔石インベントリ/装備/魔石盤を持つ新構造
+interface SaveData { v: typeof SAVE_V; idx: number; game: GameState }
 
 export function writeSave(idx: number): void {
-  try { localStorage.setItem(KEY, JSON.stringify({ v: 1, idx, game } satisfies SaveData)); } catch { /* noop */ }
+  try { localStorage.setItem(KEY, JSON.stringify({ v: SAVE_V, idx, game } satisfies SaveData)); } catch { /* noop */ }
 }
 
 /** 覚醒後（魔石を装備してから）だけオートセーブする。 */
@@ -24,7 +25,7 @@ export function loadSave(): number | null {
     const s = localStorage.getItem(KEY);
     if (!s) return null;
     const d = JSON.parse(s) as SaveData;
-    if (d.v !== 1) return null;
+    if (d.v !== SAVE_V) return null;
     Object.assign(game, d.game);
     return d.idx;
   } catch { return null; }

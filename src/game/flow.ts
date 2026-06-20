@@ -25,7 +25,7 @@ export function route(scene: Phaser.Scene): void {
       transitionTo(scene, 'Field');
       break;
     case 'battle':
-      transitionTo(scene, b.mode === 'board' ? 'Board' : 'Phys');
+      transitionTo(scene, 'Battle');
       break;
     case 'end':
       transitionTo(scene, 'TheEnd');
