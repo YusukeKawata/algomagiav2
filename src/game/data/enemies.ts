@@ -6,7 +6,8 @@ import { NAMES } from '@game/data/names';
 
 // hp/atk＝戦闘の体力と攻撃。weakness＝弱点属性（その元素スキルで2倍）。
 // gold＝撃破で得る通貨。pool＝魔石ドロップ抽選（stones.ts STONE_POOLS）。color＝トークン色。
-export interface Enemy { id: string; name: string; hp: number; atk: number; weakness: Attr; gold: number; pool: string; xp: number; color?: number }
+// bigEvery>0＝強敵の「ためる→大攻撃」周期（看破=みやぶる で受け流せる予測防御の見せ場）。
+export interface Enemy { id: string; name: string; hp: number; atk: number; weakness: Attr; gold: number; pool: string; xp: number; color?: number; bigEvery?: number }
 
 // 旧シーン/テスト互換のエイリアス（統一後も型名を温存）。
 export type PhysEnemy = Enemy;
@@ -22,13 +23,13 @@ export const ENEMIES: Record<string, Enemy> = {
   mob2:     { id: 'mob2',     name: '群れ狼',   hp: 14, atk: 4, weakness: 'fire',    gold: 4,  pool: 'weak',   xp: 6,  color: 0x9a6a4a },
   gnawer:   { id: 'gnawer',   name: '岩噛み',   hp: 18, atk: 4, weakness: 'thunder', gold: 6,  pool: 'mid',    xp: 9,  color: 0x6a8a5a },
   shade:    { id: 'shade',    name: '淀みの影', hp: 16, atk: 6, weakness: 'fire',    gold: 7,  pool: 'mid',    xp: 10, color: 0x4a4a6a },
-  sentinel: { id: 'sentinel', name: '双角獣',   hp: 24, atk: 5, weakness: 'ice',     gold: 10, pool: 'mid',    xp: 14, color: 0x7a5a8a },
-  boss:     { id: 'boss',     name: NAMES.boss, hp: 34, atk: 5, weakness: 'ice',     gold: 30, pool: 'strong', xp: 28, color: 0xb0405a },
+  sentinel: { id: 'sentinel', name: '双角獣',   hp: 24, atk: 5, weakness: 'ice',     gold: 10, pool: 'mid',    xp: 14, color: 0x7a5a8a, bigEvery: 4 },
+  boss:     { id: 'boss',     name: NAMES.boss, hp: 34, atk: 5, weakness: 'ice',     gold: 30, pool: 'strong', xp: 28, color: 0xb0405a, bigEvery: 3 },
   // 覚醒後の盤戦で出る、弱点ちがいの魔物（入門=炎弱点）。
   awakened: { id: 'awakened', name: '霧狼',     hp: 24, atk: 4, weakness: 'fire',    gold: 8,  pool: 'mid',    xp: 12, color: 0xff7043 },
-  frost:    { id: 'frost',    name: '氷狼',     hp: 30, atk: 5, weakness: 'fire',    gold: 12, pool: 'strong', xp: 16, color: 0x4fc3f7 },
-  spark:    { id: 'spark',    name: '雷甲虫',   hp: 28, atk: 5, weakness: 'wind',    gold: 12, pool: 'mid',    xp: 16, color: 0xffd54f },
-  gale:     { id: 'gale',     name: '疾風鳥',   hp: 32, atk: 6, weakness: 'thunder', gold: 14, pool: 'strong', xp: 18, color: 0x81c784 },
+  frost:    { id: 'frost',    name: '氷狼',     hp: 30, atk: 5, weakness: 'fire',    gold: 12, pool: 'strong', xp: 16, color: 0x4fc3f7, bigEvery: 4 },
+  spark:    { id: 'spark',    name: '雷甲虫',   hp: 28, atk: 5, weakness: 'wind',    gold: 12, pool: 'mid',    xp: 16, color: 0xffd54f, bigEvery: 4 },
+  gale:     { id: 'gale',     name: '疾風鳥',   hp: 32, atk: 6, weakness: 'thunder', gold: 14, pool: 'strong', xp: 18, color: 0x81c784, bigEvery: 3 },
 };
 
 // 旧名アクセスの互換エイリアス（同一データ）。

@@ -12,7 +12,12 @@ export interface CombatHero {
   atk: number; def: number;
   guarding: boolean; // 看破中＝次の敵攻撃を読んで大幅軽減
 }
-export interface CombatEnemy { name: string; hp: number; maxHp: number; atk: number; weakness: Attr }
+// bigEvery>0 の敵は、bigEvery 回ふつうに攻撃するごとに「ためる」（その手番はダメージ0＝予兆）。
+//   次の手番で 2倍の大攻撃を放つ。決定論なので、看破(guarding)で読んで受け流せる＝予測防御の手応え。
+export interface CombatEnemy {
+  name: string; hp: number; maxHp: number; atk: number; weakness: Attr;
+  bigEvery: number; sinceBig: number; charging: boolean;
+}
 
 export interface CombatState {
   hero: CombatHero;
@@ -22,13 +27,13 @@ export interface CombatState {
 }
 
 export interface HeroSetup { hpMax: number; freeWillMax: number; atk: number; def: number }
-export interface EnemySetup { name: string; hp: number; atk: number; weakness: Attr }
+export interface EnemySetup { name: string; hp: number; atk: number; weakness: Attr; bigEvery?: number }
 
 /** 戦闘開始（HP/自由意志は満タン＝戦闘開始＝全回復ポリシー）。 */
 export function startCombat(hero: HeroSetup, enemy: EnemySetup): CombatState {
   return {
     hero: { hp: hero.hpMax, hpMax: hero.hpMax, freeWill: hero.freeWillMax, freeWillMax: hero.freeWillMax, atk: hero.atk, def: hero.def, guarding: false },
-    enemy: { name: enemy.name, hp: enemy.hp, maxHp: enemy.hp, atk: enemy.atk, weakness: enemy.weakness },
+    enemy: { name: enemy.name, hp: enemy.hp, maxHp: enemy.hp, atk: enemy.atk, weakness: enemy.weakness, bigEvery: enemy.bigEvery ?? 0, sinceBig: 0, charging: false },
     outcome: 'none', turn: 0,
   };
 }
@@ -81,28 +86,54 @@ export function heroHealFw(s: CombatState, amount: number): ActionResult {
   return { state: { ...s, hero: { ...s.hero, freeWill } }, dealt: 0, weak: false, cost: 0, ok: true, note: 'heal-fw' };
 }
 
-export interface EnemyResult { state: CombatState; dealt: number; guarded: boolean }
+export interface EnemyResult { state: CombatState; dealt: number; guarded: boolean; big: boolean; telegraph: boolean }
 
-/** 敵の手番＝物理で HP を削る（atk−def、最低1）。看破中なら大幅軽減。HP0で敗北。 */
+/**
+ * 敵の手番。通常は atk−def。bigEvery 回ごとに「ためる」(telegraph＝ダメージ0・予兆)→次手番で2倍の大攻撃(big)。
+ * 看破中(guarding)なら受けるダメージを大幅軽減（大攻撃も読み切れる＝予測防御の payoff）。HP0で敗北。
+ */
 export function enemyTurn(s: CombatState): EnemyResult {
-  if (s.outcome !== 'none') return { state: s, dealt: 0, guarded: false };
+  if (s.outcome !== 'none') return { state: s, dealt: 0, guarded: false, big: false, telegraph: false };
   const guarded = s.hero.guarding;
-  let dmg = Math.max(1, s.enemy.atk - s.hero.def);
-  if (guarded) dmg = Math.max(0, Math.floor(dmg * 0.25));
+  const e = s.enemy;
+  let dmg: number;
+  let big = false;
+  let telegraph = false;
+  let charging = e.charging;
+  let sinceBig = e.sinceBig;
+
+  if (e.charging) {
+    // 予兆の次手番＝大攻撃。
+    big = true; charging = false; sinceBig = 0;
+    dmg = Math.max(1, e.atk * 2 - s.hero.def);
+  } else if (e.bigEvery > 0 && sinceBig + 1 >= e.bigEvery) {
+    // ためる手番＝ダメージ0で予兆。
+    telegraph = true; charging = true; sinceBig = 0;
+    dmg = 0;
+  } else {
+    sinceBig = sinceBig + 1;
+    dmg = Math.max(1, e.atk - s.hero.def);
+  }
+  if (guarded && dmg > 0) dmg = Math.max(0, Math.floor(dmg * 0.25));
+
   const hp = Math.max(0, s.hero.hp - dmg);
   const outcome: Outcome = hp <= 0 ? 'lose' : 'none';
-  return { state: { ...s, hero: { ...s.hero, hp, guarding: false }, outcome, turn: s.turn + 1 }, dealt: dmg, guarded };
+  return {
+    state: { ...s, hero: { ...s.hero, hp, guarding: false }, enemy: { ...e, charging, sinceBig }, outcome, turn: s.turn + 1 },
+    dealt: dmg, guarded, big, telegraph,
+  };
 }
 
 /**
- * 「素朴に攻撃連打すれば勝てるか」を決定論シミュレーション（バランス不変条件の担保用）。
- * retry は全回復・決定論なので、これが true なら無限ループにならない。
+ * 「ふつうに戦えば勝てるか」を決定論シミュレーション（バランス不変条件の担保用）。
+ * 戦略＝予兆(charging)が見えたら看破(guard)、そうでなければ攻撃。retry は全回復・決定論なので
+ * これが true なら無限ループにならない（＝到達レベルで詰まない）。
  */
 export function autoWinnable(hero: HeroSetup, enemy: EnemySetup): boolean {
   let s = startCombat(hero, enemy);
   let guard = 0;
-  while (s.outcome === 'none' && guard++ < 2000) {
-    s = heroAttack(s).state;
+  while (s.outcome === 'none' && guard++ < 4000) {
+    s = s.enemy.charging ? heroGuard(s).state : heroAttack(s).state;
     if (s.outcome === 'none') s = enemyTurn(s).state;
   }
   return s.outcome === 'win';
