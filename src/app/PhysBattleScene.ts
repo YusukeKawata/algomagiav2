@@ -2,13 +2,14 @@
 // 2モード: flow=台本の戦闘(勝利で次へ) / encounter=フィールドの遭遇(勝利でフィールドへ復帰)。
 // 判定は core/phys.ts（決定論・テスト済）に委譲。難易度=中間: 各戦闘は開始時に全回復・負けたらリトライ。
 import Phaser from 'phaser';
-import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
+import { CANVAS_W, COLORS } from '@app/theme';
 import { currentBeat, advance } from '@game/flow';
-import { game } from '@game/state';
-import { PHYS_ENEMIES, PHYS_POWER, type PhysEnemy } from '@game/data/enemies';
+import { game, physPower, grantXp } from '@game/state';
+import { PHYS_ENEMIES, type PhysEnemy } from '@game/data/enemies';
 import { startPhys, strike, type PhysState } from '@core/phys';
 import { fadeInOnCreate, addMuteToggle, transitionTo, popupNumber, flash, shake } from '@app/ui/fx';
 import { playSfx } from '@app/ui/sfx';
+import { paintScene } from '@app/ui/bg';
 
 const EX = CANVAS_W / 2, EY = 250; // 敵トークン
 const HX = CANVAS_W / 2, HY = 470; // 主人公トークン
@@ -41,7 +42,7 @@ export class PhysBattleScene extends Phaser.Scene {
     this.s = startPhys(game.heroHpMax, this.enemy); // 開始時に全回復
     this.log = this.intro;
 
-    this.add.rectangle(0, 0, CANVAS_W, CANVAS_H, 0x120a12).setOrigin(0);
+    paintScene(this, this.mode === 'encounter' ? 'ruin' : 'phys');
     this.g = this.add.graphics();
     this.text = this.add.text(80, 96, '', { fontFamily: 'monospace', fontSize: '20px', color: COLORS.text, lineSpacing: 8 });
 
@@ -55,7 +56,7 @@ export class PhysBattleScene extends Phaser.Scene {
     if (this.s.outcome === 'win') { this.finish(); return; }
     if (this.s.outcome === 'lose') { this.retry(); return; }
 
-    const r = strike(this.s, PHYS_POWER);
+    const r = strike(this.s, physPower());
     this.s = r.state;
     playSfx('hit');
     popupNumber(this, EX, EY - 30, `${r.dealt}`, { color: '#ffd27a' });
@@ -64,8 +65,15 @@ export class PhysBattleScene extends Phaser.Scene {
       game.stones += this.enemy.drop;
       game.heroHp = this.s.hero.hp;
       playSfx('win');
+      const xr = grantXp(this.enemy.xp);
       const cont = this.mode === 'encounter' ? '[Z]で戻る' : '[Z]で進む';
-      this.log = `なぐる！ ${r.dealt}ダメージ。${this.enemy.name}を倒した。魔石+${this.enemy.drop}（所持:${game.stones}）。${cont}`;
+      let line = `なぐる！ ${r.dealt}ダメージ。${this.enemy.name}を倒した。魔石+${this.enemy.drop}・経験+${this.enemy.xp}。`;
+      if (xr.leveledUp) {
+        playSfx('weak');
+        popupNumber(this, HX, HY - 70, `LEVEL UP! Lv.${xr.to}`, { color: '#ffe27a', big: true });
+        line += `★レベルアップ！ Lv.${xr.from}→${xr.to}（HP/自由意志/火力が上がった）。`;
+      }
+      this.log = line + cont;
       this.render();
       return;
     }
@@ -103,10 +111,10 @@ export class PhysBattleScene extends Phaser.Scene {
     const g = this.g;
     g.clear();
 
-    // トークン（〔アート未〕差し替え枠）。
+    // トークン（人物アートが無いので種類を色で示す）。
     const ehpRatio = this.s.enemy.hp / this.s.enemy.max;
     const hhpRatio = Math.max(0, this.s.hero.hp) / this.s.hero.max;
-    g.fillStyle(0x3a1622, 1).fillCircle(EX, EY, 46);
+    g.fillStyle(this.enemy.color ?? 0x3a1622, 1).fillCircle(EX, EY, 46);
     g.lineStyle(3, 0xff5a6e, 0.9).strokeCircle(EX, EY, 46);
     g.fillStyle(0x16324a, 1).fillCircle(HX, HY, 36);
     g.lineStyle(3, 0x7be0a0, 0.9).strokeCircle(HX, HY, 36);
@@ -122,7 +130,7 @@ export class PhysBattleScene extends Phaser.Scene {
       '',
       `敵  ${this.enemy.name}    HP ${this.s.enemy.hp}/${this.s.enemy.max}`,
       '',
-      `${game.heroName}（あなた）  HP ${Math.max(0, this.s.hero.hp)}/${this.s.hero.max}`,
+      `${game.heroName}（あなた） Lv.${game.level}  HP ${Math.max(0, this.s.hero.hp)}/${this.s.hero.max}  火力 ${physPower()}`,
       '',
       `[Z]なぐる    ${this.log}`,
     ]);

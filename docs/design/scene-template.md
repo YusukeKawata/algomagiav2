@@ -17,6 +17,8 @@
 | `typewriter.ts` | 1文字送り（`onChar`/`onDone`） | DialogBox 内部で使用。単独表示にも流用可 |
 | `fx.ts` | フェード遷移・ダメージポップ・フラッシュ・揺れ・ミュート表示 | 下記の「シーンの作法」を参照 |
 | `sfx.ts` | 手続き合成SE（WebAudio・ミュートは localStorage 保存） | `playSfx('confirm'|'hit'|'weak'|'circuit'|…)`。BGM は未実装 |
+| `bg.ts` | 手続き生成の雰囲気背景（グラデ＋霧/星/シルエット/光/裂け目/ビネット） | `create()` 先頭で `paintScene(this, kind)`（`'title'|'village'|'ruin'|'phys'|'awaken'|'board'|'depart'|'end'`）。単色矩形の置き換え。配置はシード付き乱数で決定論、動きは tween。depth=-100 で最背面 |
+| `tiles.ts` | Kenney Roguelike パック（CC0・16px）のタイル参照 | `addTile(scene, cx, cy, frame, size)`／`TILE.{grass,stone,tree,crystal,…}`。`Preload` で `loadTiles(scene)`（キー `'rl'`） |
 
 演出の濃さ＝**中間**（ダメージ数字ポップ・弱点フラッシュ・軽い画面揺れ・回路点灯パルス）。音は**SEのみ**（[M]でミュート）。
 
@@ -29,6 +31,13 @@
 4. **即時描画（immediate）**：盤・フィールドなど動的表示は `render()` で毎回 `graphics.clear()`＋`container.removeAll(true)` してから描き直す（ADR-0006 の動的=即時方針）。
    - 毎フレーム動かす演出（点灯パルス等）は `render()` でテキストを作り直さず、**専用の `graphics` を `update()` で `clear()`→描画**する（GC を避ける）。
 5. **入力は「1入力＝1アクション」**：文字送り中の決定は「全表示」だけで、次へ進めない（`DialogBox.press()` の戻り値で分岐）。
+
+## アセット（手続き生成＋Kenney CC0）
+- **配信用**＝`public/assets/`（Vite が `/` 直下で配信＝ビルドで `dist/` にコピー）。タイルシートは `public/assets/tiles/`（`roguelike.png` / `medieval_rts.png`＋`.xml`）。
+- **原本**＝`art-src/`（Kenney 生パック・gitignore 済。再DL可。配信用のみ git に入れる）。
+- **読み込み**＝最初の `PreloadScene` で一括 `load`（テクスチャは常駐＝一度だけ）。新アセットは `tiles.ts`/`Preload` に足す。`pixelArt: true`（main.ts）で16pxを拡大してもくっきり。
+- **背景**＝原則 `bg.ts` の手続き生成（素材不要・軽量）。**フィールドのタイル地形**＝roguelike パックを `addTile` で敷く（FieldScene が手本）。
+- **人物アートは無い**＝主人公/NPC/敵は色トークンで表現（タイルの上に乗せる）。立ち絵が入るまでの既定。
 
 ## データの置き場所（コンテンツを増やす順）
 - 台詞・進行＝`game/script.ts`（`Beat` を足す）。新しいマップ＝`game/data/maps.ts`、敵＝`enemies.ts`、盤の初期配置/駒の形＝`boards.ts`、固有名＝`names.ts`。
