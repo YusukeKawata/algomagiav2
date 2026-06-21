@@ -35,6 +35,8 @@ export class DialogBox {
       fontFamily: 'monospace', fontSize: '18px', color: COLORS.dim,
     }).setOrigin(1, 0.5).setDepth(501);
     scene.tweens.add({ targets: this.indicator, alpha: 0.25, duration: 520, yoyo: true, repeat: -1 });
+    // カメラがスクロールするフィールドでも会話箱は画面下部に固定する。
+    [this.g, this.nameText, this.bodyText, this.indicator].forEach((o) => o.setScrollFactor(0));
 
     this.tw = new Typewriter(scene, this.bodyText, {
       onChar: () => playSfx('text'),

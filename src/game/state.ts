@@ -2,9 +2,10 @@
 // 二軸＝自由意志(燃料)／魔石盤(装備)。加えて従来RPGの層＝ゴールド・道具・武器/防具装備。
 import { NAMES } from '@game/data/names';
 import { statsForLevel, gainXp, type XpResult } from '@core/progress';
-import { emptyBoard, circuits, place, type Board, type Stone, type Circuit } from '@core/board';
+import { emptyBoard, circuits, place, type Board, type Stone, type Circuit, type Attr } from '@core/board';
 import { WEAPONS, ARMORS } from '@game/data/equipment';
 import { stoneSellValue } from '@game/data/stones';
+import type { Resist } from '@core/combat';
 
 export interface GameState {
   heroName: string;
@@ -23,6 +24,7 @@ export interface GameState {
   armorId: string;        // 装備中の防具（ARMORS の id・既定 'cloth'）
   mind: number;           // 心域＝魔石盤の横マス数
   compute: number;        // 演算＝魔石盤の縦マス数
+  boardCap: number;       // 盤の各辺の上限（第1幕=3／第2幕の工房で4へ引き上げ）
   board: Board;           // 装備中の魔石盤（駒配置を保持＝戦闘外で編集し戦闘で使う）
   skillUnlocked: boolean; // 据炉での覚醒で true（盤＝スキルが使える）
   flags: Record<string, boolean>;
@@ -49,6 +51,7 @@ function makeFresh(): GameState {
     armorId: 'cloth',
     mind: 1,                // 覚醒直後の盤は 1×1（magic-stone-workshop.md §9）
     compute: 1,
+    boardCap: 3,            // 第1幕は 3×3 が上限（第2幕の工房で 4 へ）
     board: emptyBoard(1, 1),
     skillUnlocked: false,
     flags: {},
@@ -65,6 +68,10 @@ export function heroAtk(): number { return physPower() + (WEAPONS[game.weaponId]
 export function heroDef(): number { return ARMORS[game.armorId]?.def ?? 0; }
 /** HP上限＝基礎＋防具ボーナス。 */
 export function maxHp(): number { return game.heroHpMax + (ARMORS[game.armorId]?.hpBonus ?? 0); }
+/** 装備中の防具の属性耐性/弱点（敵の属性攻撃の受けに効く）。 */
+export function heroResist(): Resist { return ARMORS[game.armorId]?.resist ?? {}; }
+/** 心域から導く回復魔法の治癒量（覚醒＋工房で解禁。心域が広いほど大きく戻せる）。 */
+export function mendPower(): number { return 8 + game.mind * 6; }
 
 /** 装備中の魔石盤で成立している回路（＝撃てるスキル一覧）。 */
 export function boardCircuits(): Circuit[] { return circuits(game.board); }
@@ -119,11 +126,11 @@ export function clearCell(x: number, y: number): void {
 
 // ——— 盤の成長（心域/演算）。配置済みの駒は範囲内なら保持 ———
 
-/** 覚醒後のレベルアップで盤を1段広げる次寸法（心域=横を優先→演算=縦、第1幕は上限3×3）。純関数＝テスト可。 */
-export function nextBoardDims(mind: number, compute: number): { mind: number; compute: number } {
-  if (mind < 3 && mind <= compute) return { mind: mind + 1, compute };
-  if (compute < 3) return { mind, compute: compute + 1 };
-  if (mind < 3) return { mind: mind + 1, compute };
+/** 覚醒後のレベルアップで盤を1段広げる次寸法（心域=横を優先→演算=縦、上限=cap）。純関数＝テスト可。 */
+export function nextBoardDims(mind: number, compute: number, cap = 3): { mind: number; compute: number } {
+  if (mind < cap && mind <= compute) return { mind: mind + 1, compute };
+  if (compute < cap) return { mind, compute: compute + 1 };
+  if (mind < cap) return { mind: mind + 1, compute };
   return { mind, compute };
 }
 
@@ -137,6 +144,44 @@ export function setBoardSize(mind: number, compute: number): void {
       if (s) b = place(b, x, y, s);
     }
   game.board = b;
+}
+
+/** 盤の上限を引き上げ、すぐ1段広げる（第2幕・工房の「盤の拡張」）。上限が伸びた時だけ成長する。 */
+export function raiseBoardCap(cap: number): boolean {
+  if (cap <= game.boardCap) return false;
+  game.boardCap = cap;
+  const d = nextBoardDims(game.mind, game.compute, game.boardCap);
+  setBoardSize(d.mind, d.compute);
+  return true;
+}
+
+// ——— 魔石工房（集積）。第2幕・地中の里で解禁。文様(edges)は不変、value/属性のみ変える ———
+
+/** インベントリ＋盤から魔石を完全に取り除く（素材消費）。 */
+function removeStone(id: string): void {
+  game.board = clearStoneFromBoard(game.board, id);
+  const i = game.stones.findIndex((s) => s.id === id);
+  if (i >= 0) game.stones.splice(i, 1);
+}
+
+/** 集積（強化）：素材魔石を1つ捧げて対象の魔素量(value)を+1。素材は消える。成功で true。 */
+export function fuseValue(targetId: string, materialId: string): boolean {
+  if (targetId === materialId) return false;
+  const t = game.stones.find((s) => s.id === targetId);
+  if (!t || !game.stones.some((s) => s.id === materialId)) return false;
+  t.value += 1;
+  removeStone(materialId);
+  return true;
+}
+
+/** 集積（属性付け替え）：素材魔石を1つ捧げて対象の属性を指定属性へ。素材は消える。成功で true。 */
+export function fuseAttr(targetId: string, materialId: string, attr: Attr): boolean {
+  if (targetId === materialId) return false;
+  const t = game.stones.find((s) => s.id === targetId);
+  if (!t || !game.stones.some((s) => s.id === materialId)) return false;
+  t.attr = attr;
+  removeStone(materialId);
+  return true;
 }
 
 // ——— 装備 ———
@@ -183,8 +228,8 @@ export function grantXp(amount: number): XpResult {
   if (r.leveledUp) {
     game.heroHp = maxHp();
     game.freeWill = game.freeWillMax;
-    // 覚醒後は、強くなる（レベルアップ）たびに魔石盤も1段広がる＝戦って盤を育てる。
-    if (game.skillUnlocked) { const d = nextBoardDims(game.mind, game.compute); setBoardSize(d.mind, d.compute); }
+    // 覚醒後は、強くなる（レベルアップ）たびに魔石盤も1段広がる＝戦って盤を育てる。上限は工房で引き上げ。
+    if (game.skillUnlocked) { const d = nextBoardDims(game.mind, game.compute, game.boardCap); setBoardSize(d.mind, d.compute); }
   }
   return r;
 }

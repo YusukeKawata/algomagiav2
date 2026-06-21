@@ -6,6 +6,7 @@ import { NAMES } from '@game/data/names';
 import { startFlow, route } from '@game/flow';
 import { fadeInOnCreate, addMuteToggle } from '@app/ui/fx';
 import { playSfx } from '@app/ui/sfx';
+import { startBgm } from '@app/ui/music';
 import { paintScene } from '@app/ui/bg';
 
 export class NameEntryScene extends Phaser.Scene {
@@ -18,6 +19,7 @@ export class NameEntryScene extends Phaser.Scene {
     fadeInOnCreate(this);
     this.name = '';
     paintScene(this, 'village');
+    startBgm('title');
     this.add.text(CANVAS_W / 2, 220, 'なまえを いれてください', {
       fontFamily: 'sans-serif', fontSize: '30px', color: COLORS.text,
     }).setOrigin(0.5);

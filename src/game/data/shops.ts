@@ -24,7 +24,7 @@ export const SHOPS: Record<string, Shop> = {
   },
   armor: {
     id: 'armor', kind: 'armor', name: '防具屋', clerk: '仕立てのメイ',
-    greeting: '丈夫なのを縫っといたよ。魔物は爪が鋭いからね。',
-    stock: ['leather', 'scale', 'ward'],
+    greeting: '丈夫なのを縫っといたよ。…炎やら氷やら、魔物に合わせて着替えな。',
+    stock: ['leather', 'scale', 'emberhide', 'frostweave', 'stormhide', 'ward'],
   },
 };

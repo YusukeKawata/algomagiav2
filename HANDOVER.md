@@ -10,10 +10,11 @@ v2 がv1実装からズレすぎたため、混乱を避けて**殻（UI/物語/
 
 ## いまの状態（結論）
 
-**第1幕が通しで遊べ、RPGとして肉付け済み（成長・戦闘量・物語量・探索）。** `npm run dev`＝タイトル(はじめから/つづきから)→名前入力→**霧の里**(歩いて祖父ガロに会話＝クエスト／NPC会話・調べる)→**森の小道**(道中・軽い遭遇)→**歌の遺構**(柱廊を歩く・奥ほど強い徘徊石に遭遇戦・調べる・一度きりの魔石拾得・最奥の番獣)→**番獣戦**(物理)→据炉で**覚醒**(Qの冷たい声・スキル解禁)→魔石盤の**盤戦2連戦**(awakened→frost)→旅立ち→第1幕おわり。
+**第1幕が通しで遊べ、第2幕の入口（地中の里）まで地続き。RPGとして肉付け済み（成長・戦闘量・物語量・探索・属性駆け引き・BGM・広い村）。**
+`npm run dev`＝タイトル(はじめから/つづきから)→名前入力→**霧の里**(広いスクロール村ハブ・**ガロの家[屋内]で会話＝クエスト＆形見の魔石**・サブNPC会話・行商人の露店で装備/道具・調べる)→**南門[E]**→**森の小道**→**歌の遺構**(奥ほど強い徘徊石に**無制限ランダム遭遇**・調べる・一度きりの魔石拾得・最奥の番獣)→**番獣戦**(物理)→**里へ帰還しガロの家で報告→「ついてこい」で据炉へ案内**→据炉で**覚醒**(Qの冷たい声・スキル解禁)→魔石盤の**盤戦2連戦**(awakened→frost)→旅立ち→**坑道→地中の里**(石工リーゼの工房＝集積／盤4×4／回復魔法、不干渉派タルゴ)→この先へ[O]→第1幕おわり。
 **敵を倒すとXPでレベルアップ**し HP/物理火力/自由意志が伸びる（通しで L1→L5）。難易度=中間(負けたら戦闘リトライ・各戦闘で全回復)。**オートセーブは覚醒後(魔石装備後)のみ**＝データ奉納の伏線。
-**背景＝手続き生成(`bg.ts`)／フィールド＝Kenneyタイル(`tiles.ts`)**。人物は色トークン（立ち絵素材は未供給）。
-通しは `.claude/tmp/autoplay.cjs`（dev限定 `window.__game`/`__state`/`__flow` を読みつつBFS+anti-stuckで自動操作）で **TheEnd到達・戦闘10回・pageエラーゼロ**を確認。core 44テスト/typecheck/build 緑。
+**背景＝手続き生成(`bg.ts`)／フィールド＝Kenneyタイル(`tiles.ts`)＋スクロールカメラ＋データ駆動マップ(`maps.ts` の npcs/examines/decor)**。人物は色トークン（立ち絵素材は未供給）。
+通しは `.claude/tmp/autoplay3.cjs`（dev限定 `window.__game`/`__state` を読み、Field=状態で目標切替＋BFS＋NPC会話、Battle=z連打）で **TheEnd到達・戦闘7回・pageエラー0**を確認。**69テスト/typecheck/build 緑**。詳細な最新変更は下の「2026-06-21（続2）」。
 
 ### 2026-06-21 RPG大改修（ターン制戦闘・ゴールド経済・店・装備・魔石盤の作り替え）〔ponti指示で実施〕
 プレイ→診断→改善の自走で、第1幕を「ふつうのRPGの殻」に整えた。**core 54テスト/typecheck/build 緑、autoplay2 で TheEnd 到達・pageエラー0**（L1→L5・戦闘6・G15→74）。
@@ -26,6 +27,26 @@ v2 がv1実装からズレすぎたため、混乱を避けて**殻（UI/物語/
 - **モンスター改名**（モンスターらしく・正体は伏せる・「石」を付けない）：霧狼/群れ狼/岩噛み/淀みの影/双角獣/遺構の番獣、盤敵＝氷狼/雷甲虫/疾風鳥。
 - 自動プレイ＝`.claude/tmp/autoplay2.cjs`（新フロー対応・Battleはz連打＝攻撃で勝てる）。メニュー/店の目視＝`.claude/tmp/shotmenu.cjs`（`m-*.png`）。**旧 `autoplay.cjs` は旧シーン用で動かない**。
 - **戦闘の駆け引き（追加・同日）**：強敵に「**ためる→大攻撃(2倍)**」周期（`enemies.bigEvery`）。ためる手番はダメージ0＋黄色い警告リング＋⚠表示＝**予兆**。次手番の大攻撃を**みやぶる(看破)で受け流す**（決定論なので読める＝予測防御の手応え）。`core/combat.ts` に `charging/sinceBig/bigEvery`＋`enemyTurn` の big/telegraph。`autoWinnable` は「予兆を見たら看破・他は攻撃」で詰まないことを担保（boss/盤敵で緑）。core 56テスト。
+
+### 2026-06-21（続）4本まとめ：火力カーブ／敵属性・複数行動・Lvスケール／第2幕の入口（地中の里）／BGM 〔ponti指示・loopで自走〕
+ループエンジニアリング（入力を最初に一括確認→自走）で4テーマを実装。**core/state 69テスト・typecheck・build 緑、autoplay2 で TheEnd 到達・pageエラー0**（L1→L5・戦闘7・G15→90・地中の里まで通し）。確認した分岐＝「遊べる第二の里まで」「工房の集積＝value強化＋**属性付け替え解禁**（属性固定の決定を緩めた）」「敵属性攻撃＋防具に属性耐性」。
+
+1. **スキル火力カーブ**（`core/combat.skillBaseDamage`）：スキルダメージ＝強さ合計＋**長回路ボーナス（超線形・+25%/石）**。3石で×1.5、5石で×2、さらに弱点で×2。**育った盤の長い弱点回路がこうげきを明確に上回る**（例：L5相当atk16を3石強さ9の弱点回路26が上回る）。コストは石数（線形）＝「長い回路を組む」が報われる。1×1の単石は弱点でも2＝序盤はこうげき優位＝softlock維持（`autoWinnable` は攻撃のみで判定＝スキル強化と独立）。
+2. **敵の属性攻撃＋防具耐性＋複数行動＋Lvスケール**：`CombatEnemy.atkAttr/bigAttr/multi`、`CombatHero.resist`、`strikeDamage()`（防御→属性倍率→看破）。防具に `resist`（炎/氷/雷/風 耐性・裏に弱点）＝**熾火の胴着/凍霜の織衣/帯電の革鎧**（防具屋）。敵：群れ狼/雷甲虫＝二連撃、淀みの影/氷狼=氷、霧狼(覚醒)=炎、疾風鳥=風。遭遇敵は `scaleEnemy(e, level)`（hp+12%/Lv・atk+1/3Lv・報酬据え置き）で**到達Lvに軽くスケール**（作業ゲー化防止）。不変条件＝スケール敵もL1-8の素手で勝てる（テスト）。BattleSceneに「攻撃:◯」「守:◯耐/弱」「N連撃」表示＋属性色フラッシュ。
+3. **第2幕の入口＝遊べる「地中の里」**（§8.9）：新マップ **坑道(tunnels)**→**地中の里(underville)**。坑道は属性持ちの魔物（地這い/燐光虫）が徘徊。里に**里長タルゴ[J]（不干渉派＝テーマの鏡）**・**石工リーゼ[M]（魔石工房）**。`WorkshopScene`＝**集積**（素材魔石を捧げて value+1／**属性うつし**＝素材の属性へ。文様は不変）。リーゼ初対面で `act2/healMagic` 解禁＋`raiseBoardCap(4)`（**盤上限 3×3→4×4**）。**回復魔法「いやし」**＝心域から状態を読み戻す戦闘コマンド（`heroMend`・自由意志-4・量=8+心域×6）。bg に `under`、`O`タイル＝この先へ（フロー進行）。
+4. **BGM（手続き合成）**：`app/ui/music.ts`（sfx と AudioContext 共有・`startBgm/stopBgm`）。シーン別の静かなループ（title/village/ruin/battle/under/depart/end＝テンポ・コード進行・アルペジオ手書き）。**[M]ミュート連動**（毎ステップ `isMuted` 確認＝ミュート中は無音でスケジュールだけ進む）。各シーンの create で `startBgm`。
+
+### 2026-06-21（続2）村の拡張・探索性・フローの自然化・UI明確化 〔ponti指示・loopで自走〕
+プレイ→診断→改善の自走で、第1幕の「序盤の体験」を作り直した。**69テスト/typecheck/build 緑、autoplay3 で TheEnd 到達・pageエラー0**（L1→L5・戦闘7）。確認した分岐＝「村＝ハイブリッド（スクロール広場＋入れる建物）」「出発＝ソフト誘導」。
+
+- **フィールドにスクロールカメラ＋タイル縮小**（`FieldScene`）：固定タイル `TILE_PX=36`（元素材を小さめに）。マップが画面より大きいと**カメラがプレイヤー追従**（`centerOn`・境界クランプ）、小さいマップは中央寄せ固定。HUD/会話箱/ミュート表示/背景は `setScrollFactor(0)` で画面固定（`fx.ts`/`dialogbox.ts`）。
+- **マップをデータ駆動化**（`maps.ts`）：`FieldMap` に `npcs/examines/decor` を持てる（村・ガロの家）。`NpcKind` で種別ディスパッチ（villager/garo/nina/shop*/underElder/maker）。**旧来の文字NPC（underville の J/M 等）も併存サポート**。地形タイル追加＝`H`(建物)/`C`(守り石)/`g`,`d`(扉)。
+- **村ハブを拡張＋入れる建物＋サブNPC**：霧の里を 36×22 のスクロール村に。**ガロの家（屋内マップ `garo_house`）**へ扉 `g` で出入り。サブNPC（畑のドゥエ/猟師バルク/子どものミィ/老婆セン）＋ニナ＋行商人の露店3種＋調べる点。守り石は記念碑として中央に。
+- **遭遇数の上限を撤廃**（`ENC_MAX` 削除）：最低 `ENC_STEPS=4` 歩いたら以降は毎歩**一定確率(0.5)でランダムエンカウント**（シード付き）。無制限。`scaleEnemy` で到達Lvにスケール（既存）。
+- **番獣撃破→村帰還→ガロが据炉へ案内**（`script.ts`/`flow.ts`/`FieldScene`/`BattleScene`）：守り石を直接据炉に持ち込まず、**撃破→`boss-cleared` フラグ→里へ帰還→ガロの家で報告→「ついてこい」で据炉へ→覚醒**。南門 `E` は報告前は通れない（ソフトに家へ誘導）。
+- **初の旅立ちの重み・装備動線・ニナの別れ**：クエスト受領後ニナが**装備/道具を促す**（露店・魔石売却の案内）。番獣撃破後の帰還でニナが出迎え、サブNPCが世界観を小出し。
+- **魔石盤メニューを専用パネル化**（`MenuScene`・「魔石セット画面で戦う」混乱の解消）：オーバーレイを**不透明**にし背後のフィールド（＝モンスターが出る場所）を隠す。盤を枠で囲い**入口/出口**ラベル＋「◆ここはスキルを組む編集画面（戦闘ではない）」を明記。心域=横/演算=縦の説明も。
+- 自動プレイ＝`.claude/tmp/autoplay3.cjs`（**NPC会話に対応**＝目標を状態で切替・NPC隣でz・会話送り）。**ハーネスのポートは 5173 に統一**（autoplay2/3・shotmenu・shotfield）。`shotfield.cjs`＝任意マップを撮る道具。
 
 ### 2026-06-20 探索拡張（森の小道＋調べる）
 - **新エリア「森の小道」**：里→遺構の道中マップ `path`（15×9・木の柵）。`script.ts` に field beat を挿入。軽い遭遇（`PATH_ENCOUNTERS`）。遭遇は `ENCOUNTER_POOLS`（mapId→敵表）で汎用化。
@@ -60,7 +81,8 @@ v2 がv1実装からズレすぎたため、混乱を避けて**殻（UI/物語/
 - **フロー**: `game/script.ts`(ACT1台本)＋`game/flow.ts`(beatを各シーンへ・退場ガード)＋`game/state.ts`＋`game/data/{names,enemies,maps,boards}.ts`。
 - **シーン**: Title／Name／Story(会話＋覚醒の冷たい声)／Field(歩ける里/遺構)／Phys(物理戦)／Board(盤戦)／TheEnd。全シーンが共有UI(フェード/SE/ミュート)に乗る。
 - typecheck/test(23)/build 緑。**戦闘/物理の数値は手書き暫定（data側で調整可・不変条件はテストが守る）**。`BootScene.ts` は未使用。
-- **まだ無い**: 盤の成長(心域/演算)・複数盤・看破・精霊魔法・並列演算／第2幕以降(第二の里・魔石工房の集積UI)／**人物アート(立ち絵=主人公/NPC/敵。両Kenneyパックに無く色トークンで代用中)**／**BGM**(SEは実装済)。背景＝手続き生成、フィールド＝Kenneyタイルで導入済。
+- **実装済（2026-06-21続）**: 看破／盤の成長(心域/演算・上限4×4)／魔石工房の集積UI（value強化＋属性うつし）／第2幕の入口(地中の里)／回復魔法(いやし)の入口／**BGM**(手続き合成・シーン別)。
+- **まだ無い**: 複数盤・精霊魔法・並列演算／第2幕本体(第三の町＝ハブ&スポーク・依頼/周回)／**人物アート(立ち絵=主人公/NPC/敵。両Kenneyパックに無く色トークンで代用中)**。背景＝手続き生成、フィールド＝Kenneyタイル。
 
 ロックした基盤決定（詳細 [ADR-0001](docs/adr/0001-v2-foundation.md)）:
 - **ジャンル**＝ノベルRPG（RPG主体・テキスト多め）。
@@ -78,36 +100,42 @@ v2 がv1実装からズレすぎたため、混乱を避けて**殻（UI/物語/
 
 > 方針：プレイ→診断→改善→検証(typecheck/test/build＋autoplay)→次の改善、を**自走で回す**。下は優先順（上から着手推奨）。
 
-1. **戦闘の駆け引き（継続）**：✅ 強敵の「ためる→大攻撃」＋看破(みやぶる)の受け流しは実装済（`bigEvery`）。**残り**＝弱点スキルを使う価値（1×1盤だと火力が低い→盤の成長 §2 と連動）／敵に属性攻撃や複数行動パターン／`game.level` での軽い敵スケール。**不変条件**＝`autoWinnable`（予兆を見たら看破・他は攻撃）を緑に保つ。
-2. **盤の手応えを深める**：✅ 覚醒後レベルアップで盤が1段ずつ拡張（`nextBoardDims`）は実装済。**残り**＝広い盤で「長い回路（強さ合計）」「並列レーン＝複数スキル」が活きるよう、スキル火力カーブ/コストを調整。属性弱点を突く価値を上げる。第2幕で上限引き上げ・複数盤・看破の盤表現。**softlock厳禁**：盤が空/弱くても攻撃で勝てる保証（`autoWinnable`）を維持。
-3. **店/装備/道具のバランスと拡充**：価格・性能カーブ、状態異常薬、終盤装備。ゴールド収支（ドロップ/売却 vs 物価）の調整。`equipment.ts`/`items.ts`/`shops.ts`/`stones.ts`。
-4. **村のサブNPC/会話を増やす＋第2幕の入口**：第二の里(地中)・魔石工房の集積UI。新シーンは [scene-template.md](docs/design/scene-template.md) に乗せる。マップ往来(`exits`)は拡張済なので新マップ追加が楽。
-5. **BGM（手続き合成）**：`sfx.ts` と同じ WebAudio で。シーン別に静かなループ。[M]ミュート連動。立ち絵アートは差し替え枠のまま。
+- ✅ **済（続1）**：戦闘の駆け引き（スキル火力カーブ・敵属性/複数行動・防具属性耐性・遭遇Lvスケール）／盤の手応え（長回路がこうげき超え・盤4×4・回復魔法）／第2幕の入口（地中の里・工房）／BGM。`autoWinnable` 緑維持。
+- ✅ **済（続2）**：フィールドのスクロールカメラ＋タイル縮小／マップのデータ駆動化／広い村ハブ＋ガロの家（屋内）＋サブNPC／遭遇上限撤廃（ランダムエンカウント）／番獣撃破→帰還→ガロが据炉へ案内／魔石盤メニューの不透明パネル化（編集と戦闘を分離）。
+
+**次の候補（上から着手推奨）**
+1. **第2幕本体**＝第三の町（壁の狩人町・ハブ&スポーク・依頼/周回・魔石経済 §8.10）。地中の里[O]の先に接続。精霊魔法(霊脈 §8.12)・並列演算(演算 §8.13)の解禁スポーク。
+2. **村の建物を増やす**：いまは「ガロの家」のみ屋内化。市の屋内・宿・倉庫など `garo_house` と同じデータ駆動（`maps.ts` に `npcs/examines/decor` を足すだけ）で増やせる。
+3. **盤の手応えの続き**：並列レーン＝複数スキルの活き方／複数盤／看破の盤表現／工房チュートリアル動線。
+4. **店/装備/道具のバランス**：属性防具の価格・性能カーブ、状態異常薬、終盤装備、ゴールド収支。`equipment.ts`/`items.ts`/`shops.ts`/`stones.ts`。
+5. **磨き**：BGMの音色/進行・戦闘トラック分化／garo_house の壁タイル（今は墓石流用）／**人物アート（立ち絵）**（色トークン代用中・供給されたら差し替え）。
 
 着手前に読む: [docs/design/scene-template.md](docs/design/scene-template.md)（シーン/演出/アセットの規約・**bg.ts/tiles.ts/成長の入口**を明記）／[magic-stone-workshop.md](docs/design/magic-stone-workshop.md)（盤の正典）／[ADR-0001](docs/adr/0001-v2-foundation.md)（基盤）。
 
-### 通しプレイ計測（このマシン＝user `ponti`）
-**`.claude/tmp/autoplay2.cjs`（新フロー対応・現行）**：dev限定 `window.__game`/`__state`/`__flow(flowIndex)` を読み、フィールドはBFS、戦闘はz連打（=こうげき）で **TheEnd まで自走**＆スクショ(`b-*.png`)＆pageエラー収集。メニュー/店の目視は `.claude/tmp/shotmenu.cjs`（状態注入→`m-*.png`）。※旧 `autoplay.cjs` は廃止シーン用で動かない。
-- 実行：`npm run dev -- --port 5188 --strictPort` を起動 → `node .claude/tmp/autoplay2.cjs`（出力 JSON＋TRAIL）。
-- パス：chromium-1217 と playwright-core は **`C:/Users/ponti/...`**（旧 `drive.cjs` は別マシン `radiology` パスなので注意）。
-- 終わったら dev サーバを停止（PowerShell: `Get-NetTCPConnection -LocalPort 5188 -State Listen | %{ Stop-Process -Id $_.OwningProcess -Force }`）。
-- 静止画だけなら `.claude/tmp/shot*.cjs`。`.claude/tmp/grid.py` は Kenneyシートをグリッド可視化してタイル番地を採取する道具。
+### 通しプレイ計測（このマシン＝user `ponti`・ポートは 5173 に統一）
+**`.claude/tmp/autoplay3.cjs`（現行・NPC会話対応）**：dev限定 `window.__game`/`__state` を読み、Fieldは状態で目標を切替（扉/門/NPC隣）＋BFS＋NPC隣でz＋会話送り、戦闘はz連打で **TheEnd まで自走**＆スクショ(`c-*.png`)＆pageエラー収集。任意マップの目視は `.claude/tmp/shotfield.cjs <mapId>`（`f-*.png`）、メニュー/店は `.claude/tmp/shotmenu.cjs`（`m-*.png`）。※`autoplay2.cjs` は旧フロー用（NPCゲートを越えられない）。
+- 実行：dev を 5173 で起動 → `node .claude/tmp/autoplay3.cjs`（出力 JSON＋TRAIL）。
+- パス：chromium-1217 と playwright-core は **`C:/Users/ponti/...`**。
+- dev サーバ停止：`Get-NetTCPConnection -LocalPort 5173 -State Listen | %{ Stop-Process -Id $_.OwningProcess -Force }`。
+- `.claude/tmp/grid.py` は Kenneyシートをグリッド可視化してタイル番地を採取する道具。
 
 ## 再開のしかた
 ```
 npm install        # 初回のみ（phaser / phaser4-rex-plugins 含む）
-npm run test       # core 54件（combat/progress/rng/board/battle/phys/board-fight/smoke）。緑を確認
+npm run test       # 69件（combat/progress/rng/board/battle/phys/board-fight/smoke/state）。緑を確認
 npm run typecheck
 npm run build
-npm run dev        # フィールド: 矢印=移動 / [Z]=会話・調べる・店を開く / [C]=メニュー / 出口タイル(E/w/e)で行き来
-                   # 戦闘: ↑↓で選択・[Z]決定（こうげき/スキル/どうぐ/みやぶる）・[X]戻る / [M]=ミュート
-                   # メニュー: [←→]タブ（ステータス/そうび/魔石盤/どうぐ）/ 魔石盤=矢印カーソル・[Z]で嵌める/外す
+npm run dev -- --port 5173 --strictPort   # ポートは 5173 に統一（ハーネスも 5173）
+                   # フィールド: 矢印=移動（大マップはカメラ追従スクロール） / [Z]=会話・調べる・露店/扉/工房 / [C]=メニュー
+                   #   出入口: 南門[E]・通路[w/e]・建物の扉[g/d]・この先へ[O]
+                   # 戦闘: ↑↓で選択・[Z]決定（こうげき/スキル/(覚醒後)いやし/どうぐ/みやぶる）・[X]戻る / [M]=ミュート(BGM/SE)
+                   # メニュー: [←→]タブ（ステータス/そうび/魔石盤/どうぐ）/ 魔石盤=矢印カーソル・[Z]で嵌める/外す（不透明な編集パネル＝戦闘ではない）
 ```
 
 ## ブラウザでの実機確認（UI）
-Phaser は WebGL＝ヘッドレスChromeは既定で黒画面。`.claude/tmp/shot.cjs`（playwright-core を npx キャッシュから require／
-`executablePath` に既存 chromium-1217／`--use-angle=swiftshader` 等）で dev サーバを撮影→Read で目視。
-雛形は `.claude/tmp/`（gitignore 済）。dev は `npm run dev -- --port 5188 --strictPort` で起動。
+Phaser は WebGL＝ヘッドレスChromeは既定で黒画面。`.claude/tmp/shotfield.cjs <mapId>`／`shotmenu.cjs`／`autoplay3.cjs`
+（playwright-core を npx キャッシュから require／`executablePath` に既存 chromium-1217／`--use-angle=swiftshader` 等）で
+dev サーバ(**5173**)を撮影→Read で目視。雛形は `.claude/tmp/`（gitignore 済）。
 
 ## 壊すと事故るもの（約束ごと）
 - **ADR-0001 v2 が基盤**。二軸（自由意志/魔石）・テーマ＝設計契約（実ops縛りは無し）・乱数はシード付き（`core/rng.ts` を使う。素の `Math.random`/`Date.now` 禁止）。
@@ -116,6 +144,12 @@ Phaser は WebGL＝ヘッドレスChromeは既定で黒画面。`.claude/tmp/sho
 - **戦闘は `core/combat.ts`（ターン制）が単一の正**。物理戦/盤戦は廃止＝`BattleScene` 1本。**不変条件＝「到達レベルで攻撃連打で勝てる」**（retryは全回復＆決定論。`autoWinnable`）。`enemies.ts` の数値を変えたら `core/combat.test.ts` を緑に保つ。※ 旧 `phys.ts/battle.ts/board-fight.test.ts` は未使用だがテスト資産として残置（混同しない）。
 - **状態の単一窓口は `state.ts`**：`grantXp()`/`physPower()`/`heroAtk()`/`heroDef()`/`maxHp()`（成長は core `progress.ts`）。魔石＝`stones: Stone[]`、装備＝`weaponId/armorId`＋`ownedWeapons/ownedArmors`、盤＝`board`(`mind×compute`)。HP/火力/自由意志/盤を直接いじらず helper 経由。
 - **メニュー/店はポーズ・オーバーレイ**（`scene.launch`＋`scene.pause`、閉じる時 `scene.resume('Field')`）。フィールドの[C]/店タイル[Z]から開く。
-- **魔石盤は 1×1 スタート・文様は変更不可**（ドロップ品をやりくり）。編集は戦闘外（メニュー）。**覚醒後はレベルアップごとに盤が1段拡張**（`state.nextBoardDims`・心域優先・第1幕上限3×3）。最初の装備は1×1のまま。`grantXp` が成長窓口。
-- **マップ往来は `maps.ts` の `exits`**（出口タイル→行き先＋到着座標）。フィールドの進行ゲートは「里南口[E]（覚醒後は番獣戦の引き金）」「遺構[B]」。クエスト＝`game.flags.quest`。**セーブは v2**（旧v1セーブは破棄される）。
+- **魔石盤は 1×1 スタート・文様(edges)は変更不可**（ドロップ品をやりくり）。編集は戦闘外（メニュー）。**覚醒後はレベルアップごとに盤が1段拡張**（`state.nextBoardDims(mind,compute,cap)`・心域優先・上限=`game.boardCap`＝第1幕3／第2幕の工房で4）。最初の装備は1×1のまま。`grantXp` が成長窓口。
+- **魔石の value/属性は工房（集積）で変えられる**（2026-06-21・ponti が決定を緩和）：`fuseValue`（素材を捧げて value+1）／`fuseAttr`（素材の属性へ付け替え）。**文様(edges)だけは依然不変**。地中の里の石工リーゼ[M]＝`WorkshopScene` で操作（`act2` 解禁後）。
+- **戦闘の属性**：敵 `atkAttr/bigAttr/multi`、防具 `resist`（属性別の被ダメ係数・正=耐性/負=弱点）。被ダメ＝`core/combat.strikeDamage`（防御→属性倍率→看破）。**cloth(既定)は resist 空＝既存挙動と同一**＝`autoWinnable` 不変。遭遇敵は `enemies.scaleEnemy(e, level)` で到達Lvに軽くスケール（フロー/ボスは固定）。
+- **回復魔法「いやし」**＝`core/combat.heroMend`（自由意志 `MEND_COST`=4・量 `state.mendPower`=8+心域×6）。`game.flags['healMagic']` 解禁後だけ戦闘コマンドに出る（地中の里のリーゼで解禁）。
+- **マップ往来は `maps.ts` の `exits`**（出口タイル→行き先＋到着座標）。フィールドの進行ゲートは「里南門[E]」「遺構[B]」「地中の里[O]」、扉 `g`/`d`（建物の出入口）。クエスト＝`game.flags.quest`、番獣撃破＝`game.flags['boss-cleared']`（→帰還してガロの家でガロに報告すると据炉=覚醒へ `advance`）。**セーブは v2**。
+- **マップはデータ駆動**（`maps.ts`）：`FieldMap.npcs/examines/decor` を持つマップ（村・garo_house）はそれで描画/会話。持たないマップ（path/ruin/tunnels/underville）は旧来の文字ベース（FieldScene が両対応）。NPCはタイル文字でなく座標データ＝移動の blocked は npc 座標も見る。新NPCは `npcs[]` に足すだけ。
+- **フィールドはカメラスクロール**：固定 `TILE_PX=36`。大マップは `centerOn` 追従。HUD/会話/背景/ミュートは `setScrollFactor(0)`（足し忘れるとスクロールで画面外へ流れる）。`cameras.main.fade/flash/shake` はスクロール非依存（そのまま使える）。
+- **魔石盤の編集は不透明な専用パネル**（`MenuScene`）＝背後のフィールドを見せない（「セット画面で戦う」という誤解を防ぐ）。編集＝メニュー[C]、戦闘＝フィールドの遭遇、で場所を分ける。
 - 旧プロジェクト `../20260608_algomagia` は改変しない（アーカイブ）。`art-src/`（Kenney生パック）は gitignore＝配信は `public/assets/` のみ。
