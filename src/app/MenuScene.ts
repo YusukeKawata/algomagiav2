@@ -32,7 +32,10 @@ export class MenuScene extends Phaser.Scene {
 
   create(): void {
     this.tab = 0; this.idx = 0; this.cx = 0; this.cy = 0; this.picking = false; this.msg = '';
-    this.add.rectangle(0, 0, CANVAS_W, CANVAS_H, 0x05060d, 0.82).setOrigin(0).setDepth(0);
+    // 不透明パネル＝背後のフィールド（＝モンスターが出る場所）が透けないようにする。
+    // 「魔石盤を編集する画面」と「戦闘する場所」を視覚的にはっきり分ける。
+    this.add.rectangle(0, 0, CANVAS_W, CANVAS_H, 0x070a14, 1).setOrigin(0).setDepth(0);
+    this.add.rectangle(0, 0, CANVAS_W, CANVAS_H, 0x0d1830, 0.5).setOrigin(0).setDepth(0);
     this.g = this.add.graphics().setDepth(1);
     this.head = this.add.text(60, 36, '', { fontFamily: 'monospace', fontSize: '22px', color: COLORS.text }).setDepth(2);
     this.body = this.add.text(60, 96, '', { fontFamily: 'monospace', fontSize: '19px', color: COLORS.text, lineSpacing: 8 }).setDepth(2);
@@ -175,11 +178,19 @@ export class MenuScene extends Phaser.Scene {
   private renderBoard(): void {
     const b = game.board;
     const T = 64;
-    const ox = 70, oy = 230; // ヘッダー文と重ならない位置
+    const sideW = 300;                          // 右の一覧ぶん
+    const boardW = b.width * T;
+    const ox = Math.max(70, Math.floor((CANVAS_W - (boardW + sideW)) / 2));
+    const oy = 252; // ヘッダー文と重ならない位置
     const g = this.g;
-    // レール。
+    // 盤を囲う枠（編集領域をはっきり見せる）。
+    g.fillStyle(0x0a1426, 1).fillRoundedRect(ox - 34, oy - 28, boardW + 68, b.height * T + 56, 12);
+    g.lineStyle(2, 0x2a3a5c, 1).strokeRoundedRect(ox - 34, oy - 28, boardW + 68, b.height * T + 56, 12);
+    // レール（入口=緑/出口=橙）。
     g.lineStyle(5, 0x57d977, 0.9).beginPath(); g.moveTo(ox - 8, oy); g.lineTo(ox - 8, oy + b.height * T); g.strokePath();
     g.lineStyle(5, 0xffb056, 0.9).beginPath(); g.moveTo(ox + b.width * T + 8, oy); g.lineTo(ox + b.width * T + 8, oy + b.height * T); g.strokePath();
+    this.boardLabels.add(this.add.text(ox - 8, oy - 22, '入口▶', { fontFamily: 'monospace', fontSize: '14px', color: '#57d977' }).setOrigin(0.5, 1).setDepth(3));
+    this.boardLabels.add(this.add.text(ox + boardW + 8, oy - 22, '▶出口', { fontFamily: 'monospace', fontSize: '14px', color: '#ffb056' }).setOrigin(0.5, 1).setDepth(3));
     const litIds = new Set<string>();
     for (const c of boardCircuits()) for (const s of c.stones) litIds.add(s.id);
     for (let y = 0; y < b.height; y++) {
@@ -207,9 +218,10 @@ export class MenuScene extends Phaser.Scene {
       freeStones().slice(0, 6).forEach((s) => addL(`  ${stoneLabel(s)}`, COLORS.dim));
     }
     this.body.setText([
-      '魔石盤：盤の上で [矢印]カーソル / [Z] 空マス＝嵌める・駒＝外す',
-      '※ 文様は変更不可。ドロップした魔石をやりくりして回路を組む。',
-      '', this.msg,
+      '◆ ここは「スキルを組む」編集画面です（戦闘ではありません）。組んだ回路を、戦闘で[スキル]として撃ちます。',
+      '盤の上で [矢印]カーソル ／ [Z] 空マス＝魔石を嵌める・駒＝外す。入口(左)→出口(右)が一本つながると1スキル。',
+      `心域＝横 ${b.width} / 演算＝縦 ${b.height}（レベルや工房で広がる）。文様は変更不可＝拾った魔石をやりくり。`,
+      this.msg,
     ]);
   }
 

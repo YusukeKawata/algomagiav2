@@ -92,6 +92,9 @@ export function playSfx(name: SfxName): void {
 
 export function isMuted(): boolean { return muted; }
 
+/** BGM(music.ts)など他のUI音源が共有する AudioContext（ユーザー操作後に生成・自動再生制限に従う）。 */
+export function audioCtx(): AudioContext | null { return audio(); }
+
 export function toggleMute(): boolean {
   muted = !muted;
   try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch { /* noop */ }

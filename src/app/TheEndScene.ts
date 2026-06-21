@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
 import { fadeInOnCreate, addMuteToggle, transitionTo } from '@app/ui/fx';
 import { playSfx } from '@app/ui/sfx';
+import { startBgm } from '@app/ui/music';
 import { paintScene } from '@app/ui/bg';
 
 export class TheEndScene extends Phaser.Scene {
@@ -11,6 +12,7 @@ export class TheEndScene extends Phaser.Scene {
   create(): void {
     fadeInOnCreate(this, 600);
     paintScene(this, 'end');
+    startBgm('end');
     this.add.text(CANVAS_W / 2, CANVAS_H / 2 - 30, '第1幕 ——「霧の里」 おわり', {
       fontFamily: 'serif', fontSize: '40px', color: COLORS.text,
     }).setOrigin(0.5);

@@ -13,6 +13,7 @@ export type SceneArt =
   | 'awaken'   // 据炉の覚醒：黒に沈み、冷たい裂け目が走る
   | 'board'    // 里の外れ（盤戦）：夜空と地平、淡い魔法陣
   | 'depart'   // 旅立ち：谷を出る夜明け
+  | 'under'    // 地中の里：地下空洞、結晶の燐光と漂う塵
   | 'end';     // エンド：静かな締め
 
 // --- シード付き乱数（mulberry32）。kind ごとに固定 seed で毎回同じ絵になる。 ---
@@ -26,7 +27,7 @@ function rng(seed: number): () => number {
   };
 }
 const SEED: Record<SceneArt, number> = {
-  title: 101, village: 202, ruin: 303, phys: 404, awaken: 505, board: 606, depart: 707, end: 808,
+  title: 101, village: 202, ruin: 303, phys: 404, awaken: 505, board: 606, depart: 707, under: 757, end: 808,
 };
 
 interface Builder {
@@ -270,6 +271,19 @@ export function paintScene(scene: Phaser.Scene, kind: SceneArt): Phaser.GameObje
       glow(b, W * 0.5, H * 0.74, 100, 0xffd9a0, 0.5);
       fog(b, H * 0.78, 0x6a5a6a, 0.1, 4);
       vignette(b, 0.4);
+      break;
+
+    case 'under':
+      // 地下空洞：土と岩の暗がりに、埋もれた結晶（魔石）の燐光が灯る。星は無し（地中＝観測の死角）。
+      gradient(b, 0x141019, 0x070509);
+      ridges(b, [
+        { y: H * 0.22, amp: 30, color: 0x0c0a12, alpha: 1 }, // 天井の岩肌（上から垂れる）
+        { y: H * 0.8, amp: 26, color: 0x100b14, alpha: 1 },
+      ]);
+      for (let i = 0; i < 6; i++) glow(b, rr(b.r, W * 0.12, W * 0.88), rr(b.r, H * 0.3, H * 0.78), rr(b.r, 14, 26), 0x8a7bd8, 0.4);
+      motes(b, 34, 0xb6a8e0);
+      fog(b, H * 0.7, 0x241c33, 0.12, 4);
+      vignette(b, 0.66);
       break;
 
     case 'end':

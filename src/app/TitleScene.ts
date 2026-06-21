@@ -6,6 +6,7 @@ import { setFlowIndex, route } from '@game/flow';
 import { hasSave, loadSave, clearSave } from '@game/save';
 import { fadeInOnCreate, addMuteToggle, transitionTo } from '@app/ui/fx';
 import { playSfx } from '@app/ui/sfx';
+import { startBgm } from '@app/ui/music';
 import { paintScene } from '@app/ui/bg';
 
 export class TitleScene extends Phaser.Scene {
@@ -18,6 +19,7 @@ export class TitleScene extends Phaser.Scene {
   create(): void {
     fadeInOnCreate(this);
     paintScene(this, 'title');
+    startBgm('title');
     this.add.text(CANVAS_W / 2, 200, 'Algomagia', {
       fontFamily: 'serif', fontSize: '72px', color: COLORS.text,
     }).setOrigin(0.5);

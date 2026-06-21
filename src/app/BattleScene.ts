@@ -4,35 +4,39 @@
 import Phaser from 'phaser';
 import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
 import { currentBeat, advance } from '@game/flow';
-import { game, grantXp, addStone, maxHp, heroAtk, heroDef, boardCircuits, consumeItem, itemCount } from '@game/state';
-import { ENEMIES } from '@game/data/enemies';
+import { game, grantXp, addStone, maxHp, heroAtk, heroDef, heroResist, mendPower, boardCircuits, consumeItem, itemCount } from '@game/state';
+import { ENEMIES, scaleEnemy, type Enemy } from '@game/data/enemies';
 import { ITEMS } from '@game/data/items';
 import { rollStone, stoneLabel } from '@game/data/stones';
 import { makeRng } from '@core/rng';
 import type { Circuit } from '@core/board';
 import { ATTR_LABEL } from '@core/board';
 import {
-  startCombat, heroAttack, heroSkill, heroGuard, heroHealHp, heroHealFw, enemyTurn, circuitCost,
+  startCombat, heroAttack, heroSkill, heroGuard, heroHealHp, heroHealFw, heroMend, enemyTurn, circuitCost, MEND_COST,
   type CombatState,
 } from '@core/combat';
 import { fadeInOnCreate, addMuteToggle, transitionTo, popupNumber, flash, shake } from '@app/ui/fx';
 import { playSfx } from '@app/ui/sfx';
+import { startBgm } from '@app/ui/music';
 import { paintScene } from '@app/ui/bg';
 import { ATTR_COLOR } from '@app/ui/attrs';
 
 const EX = CANVAS_W / 2, EY = 220;   // 敵トークン
 type Phase = 'root' | 'skill' | 'item' | 'win' | 'lose';
-interface Cmd { key: 'attack' | 'skill' | 'item' | 'guard'; label: string }
-const ROOT: Cmd[] = [
+interface Cmd { key: 'attack' | 'skill' | 'mend' | 'item' | 'guard'; label: string }
+const ROOT_BASE: Cmd[] = [
   { key: 'attack', label: 'こうげき' },
   { key: 'skill', label: 'スキル' },
   { key: 'item', label: 'どうぐ' },
   { key: 'guard', label: 'みやぶる' },
 ];
+// 回復魔法（いやし）は地中の里で解禁（flag healMagic）＝心域から状態を読み戻す。スキルの後ろに差し込む。
+const MEND_CMD: Cmd = { key: 'mend', label: 'いやし' };
 
 export class BattleScene extends Phaser.Scene {
   private mode: 'flow' | 'encounter' = 'flow';
   private enemyId = 'mob1';
+  private enemyDef!: Enemy;   // 実際に戦う敵（遭遇モードは到達レベルでスケール）
   private color = 0xb0405a;
   private cs!: CombatState;
   private intro = '';
@@ -59,8 +63,10 @@ export class BattleScene extends Phaser.Scene {
       this.enemyId = beat?.kind === 'battle' ? beat.enemyId : 'mob1';
       this.intro = beat?.kind === 'battle' ? beat.intro : '';
     }
-    const e = ENEMIES[this.enemyId] ?? ENEMIES['mob1']!;
-    this.color = e.color ?? 0xb0405a;
+    const base = ENEMIES[this.enemyId] ?? ENEMIES['mob1']!;
+    // 遭遇モードの敵だけ到達レベルで軽くスケール（フロー/ボスは台本どおりの固定値）。
+    this.enemyDef = this.mode === 'encounter' ? scaleEnemy(base, game.level) : base;
+    this.color = this.enemyDef.color ?? 0xb0405a;
     this.cs = this.fresh();
     this.log = this.intro;
     this.phase = 'root';
@@ -68,6 +74,7 @@ export class BattleScene extends Phaser.Scene {
     this.rewarded = false;
 
     paintScene(this, game.skillUnlocked ? 'board' : 'phys');
+    startBgm('battle');
     this.g = this.add.graphics();
     this.text = this.add.text(72, 92, '', { fontFamily: 'monospace', fontSize: '19px', color: COLORS.text, lineSpacing: 7 });
     this.menu = this.add.text(72, CANVAS_H - 196, '', { fontFamily: 'monospace', fontSize: '21px', color: COLORS.text, lineSpacing: 8 });
@@ -78,11 +85,17 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private fresh(): CombatState {
-    const e = ENEMIES[this.enemyId] ?? ENEMIES['mob1']!;
+    const e = this.enemyDef;
     return startCombat(
-      { hpMax: maxHp(), freeWillMax: game.freeWillMax, atk: heroAtk(), def: heroDef() },
-      { name: e.name, hp: e.hp, atk: e.atk, weakness: e.weakness, bigEvery: e.bigEvery },
+      { hpMax: maxHp(), freeWillMax: game.freeWillMax, atk: heroAtk(), def: heroDef(), resist: heroResist() },
+      { name: e.name, hp: e.hp, atk: e.atk, weakness: e.weakness, bigEvery: e.bigEvery, atkAttr: e.atkAttr, bigAttr: e.bigAttr, multi: e.multi },
     );
+  }
+
+  /** 現在のルートコマンド（回復魔法 解禁後は「いやし」を差し込む）。 */
+  private root(): Cmd[] {
+    if (!game.flags['healMagic']) return ROOT_BASE;
+    return [ROOT_BASE[0]!, ROOT_BASE[1]!, MEND_CMD, ROOT_BASE[2]!, ROOT_BASE[3]!];
   }
 
   private circuits(): Circuit[] { return boardCircuits(); }
@@ -102,7 +115,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private moveSel(d: number): void {
-    if (this.phase === 'root') this.rootIdx = (this.rootIdx + d + ROOT.length) % ROOT.length;
+    if (this.phase === 'root') { const n = this.root().length; this.rootIdx = (this.rootIdx + d + n) % n; }
     else {
       const len = this.phase === 'skill' ? this.circuits().length : this.ownedItems().length;
       if (len > 0) this.subIdx = (this.subIdx + d + len) % len;
@@ -113,9 +126,10 @@ export class BattleScene extends Phaser.Scene {
 
   private confirm(): void {
     if (this.phase === 'root') {
-      const cmd = ROOT[this.rootIdx]!;
+      const cmd = this.root()[this.rootIdx]!;
       if (cmd.key === 'attack') { this.doAttack(); return; }
       if (cmd.key === 'guard') { this.doGuard(); return; }
+      if (cmd.key === 'mend') { this.doMend(); return; }
       if (cmd.key === 'skill') {
         if (!game.skillUnlocked) { this.log = 'まだスキルは使えない（覚醒前）。'; playSfx('cancel'); this.render(); return; }
         if (this.circuits().length === 0) { this.log = '撃てる回路がない。魔石盤に魔石を嵌めよう。'; playSfx('cancel'); this.render(); return; }
@@ -145,6 +159,19 @@ export class BattleScene extends Phaser.Scene {
     this.cs = r.state;
     playSfx('confirm');
     this.afterHero('みやぶる。…敵の動きを読む（次の攻撃を大きく軽減）。');
+  }
+
+  private doMend(): void {
+    if (this.cs.hero.freeWill < MEND_COST) { this.log = `自由意志が足りない（必要${MEND_COST}）。`; playSfx('cancel'); this.render(); return; }
+    if (this.cs.hero.hp >= this.cs.hero.hpMax) { this.log = 'HPは満タンだ。'; playSfx('cancel'); this.render(); return; }
+    const amt = mendPower();
+    const r = heroMend(this.cs, amt);
+    if (!r.ok) { this.render(); return; }
+    this.cs = r.state;
+    playSfx('weak');
+    flash(this, 0x9ef0a8, 120);
+    popupNumber(this, CANVAS_W / 2, CANVAS_H - 240, `HP+${amt}`, { color: '#9ef0a8' });
+    this.afterHero(`いやしの回路。心域から体を読み戻す。HP+${amt}（自由意志-${MEND_COST}）。`);
   }
 
   private doSkill(): void {
@@ -183,18 +210,20 @@ export class BattleScene extends Phaser.Scene {
     this.cs = e.state;
     const name = this.cs.enemy.name;
 
+    const attrName = e.attr !== 'physical' ? `${ATTR_LABEL[e.attr]}属性の` : '';
     if (e.dealt > 0) {
       shake(this, e.big ? 0.013 : 0.006, e.big ? 200 : 140);
-      flash(this, 0xff5a6e, e.big ? 170 : 110);
+      flash(this, e.attr !== 'physical' ? ATTR_COLOR[e.attr] : 0xff5a6e, e.big ? 170 : 110);
       popupNumber(this, CANVAS_W / 2, CANVAS_H - 150, `${e.dealt}`, { color: e.big ? '#ff5a6e' : '#ff8a9a', big: e.big });
     }
     game.heroHp = this.cs.hero.hp;
     game.freeWill = this.cs.hero.freeWill;
 
+    const hitsStr = e.hits > 1 ? `${e.hits}連撃 ` : '';
     let react: string;
-    if (e.telegraph) { react = `${name}は力をためている…！ 次は大攻撃だ——[みやぶる]で受け流せ。`; playSfx('confirm'); }
-    else if (e.big) { react = e.guarded ? `${name}の大攻撃を看破！ 受け流した（${e.dealt}）。` : `${name}の大攻撃！ ${e.dealt}ダメージ。`; playSfx(e.guarded ? 'weak' : 'hurt'); }
-    else { react = `${name}の攻撃 ${e.guarded ? `${e.dealt}（看破！）` : e.dealt}`; playSfx('hurt'); }
+    if (e.telegraph) { react = `${name}は力をためている…！ 次は${attrName ? attrName : ''}大攻撃だ——[みやぶる]で受け流せ。`; playSfx('confirm'); }
+    else if (e.big) { react = e.guarded ? `${name}の${attrName}大攻撃を看破！ 受け流した（${e.dealt}）。` : `${name}の${attrName}大攻撃！ ${e.dealt}ダメージ。`; playSfx(e.guarded ? 'weak' : 'hurt'); }
+    else { react = `${name}の${attrName}${hitsStr}攻撃 ${e.guarded ? `${e.dealt}（看破！）` : e.dealt}`; playSfx('hurt'); }
 
     if (this.cs.outcome === 'lose') {
       playSfx('lose');
@@ -210,7 +239,8 @@ export class BattleScene extends Phaser.Scene {
     if (this.rewarded) return;
     this.rewarded = true;
     playSfx('win');
-    const e = ENEMIES[this.enemyId]!;
+    const e = this.enemyDef;
+    if (this.enemyId === 'boss') game.flags['boss-cleared'] = true; // 番獣撃破→里へ帰りガロへ報告（覚醒前フロー）
     game.gold += e.gold;
     const stone = rollStone(makeRng(game.xp * 131 + e.hp + game.gold + this.cs.turn), e.pool);
     addStone(stone);
@@ -261,25 +291,37 @@ export class BattleScene extends Phaser.Scene {
     g.fillStyle(0x2a1620, 1).fillRect(EX - 180, EY + 68, 360, 16);
     g.fillStyle(0xff5a6e, 1).fillRect(EX - 180, EY + 68, 360 * ehp, 16);
 
+    const atkAttrStr = c.enemy.atkAttr !== 'physical' ? ` 攻撃:${ATTR_LABEL[c.enemy.atkAttr]}` : '';
+    const multiStr = c.enemy.multi > 1 ? ` ×${c.enemy.multi}連撃` : '';
     this.text.setText([
       `《戦闘》${this.intro}`,
       '',
-      `敵  ${c.enemy.name}   HP ${c.enemy.hp}/${c.enemy.maxHp}   弱点:${ATTR_LABEL[c.enemy.weakness]}${c.enemy.charging ? '   ⚠ ためている！' : ''}`,
+      `敵  ${c.enemy.name}   HP ${c.enemy.hp}/${c.enemy.maxHp}   弱点:${ATTR_LABEL[c.enemy.weakness]}${atkAttrStr}${multiStr}${c.enemy.charging ? '   ⚠ ためている！' : ''}`,
       '',
       `${game.heroName} Lv.${game.level}   HP ${Math.max(0, c.hero.hp)}/${c.hero.hpMax}   自由意志 ${c.hero.freeWill}/${c.hero.freeWillMax}`,
-      `攻撃 ${c.hero.atk}  防御 ${c.hero.def}`,
+      `攻撃 ${c.hero.atk}  防御 ${c.hero.def}${this.resistStr()}`,
     ]);
 
     this.menu.setText(this.menuLines());
+  }
+
+  /** 装備防具の属性耐性/弱点を短く表示（敵の属性攻撃に合わせて防具を選ぶ手がかり）。 */
+  private resistStr(): string {
+    const r = this.cs.hero.resist;
+    const parts = (Object.keys(r) as (keyof typeof r)[])
+      .filter((a) => (r[a] ?? 0) !== 0)
+      .map((a) => `${ATTR_LABEL[a]}${(r[a] ?? 0) > 0 ? '耐' : '弱'}`);
+    return parts.length ? `   守:${parts.join('/')}` : '';
   }
 
   private menuLines(): string[] {
     if (this.phase === 'win' || this.phase === 'lose') return ['', this.log];
     const out: string[] = [];
     if (this.phase === 'root') {
-      const row = ROOT.map((cmd, i) => {
+      const row = this.root().map((cmd, i) => {
         const dim = (cmd.key === 'skill' && (!game.skillUnlocked || this.circuits().length === 0))
-          || (cmd.key === 'item' && this.ownedItems().length === 0);
+          || (cmd.key === 'item' && this.ownedItems().length === 0)
+          || (cmd.key === 'mend' && this.cs.hero.freeWill < MEND_COST);
         const mark = i === this.rootIdx ? '▶' : ' ';
         return `${mark}${cmd.label}${dim ? '×' : ''}`;
       }).join('   ');

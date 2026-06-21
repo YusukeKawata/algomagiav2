@@ -5,9 +5,16 @@ import { currentBeat, advance } from '@game/flow';
 import { game } from '@game/state';
 import { DialogBox } from '@app/ui/dialogbox';
 import { fadeInOnCreate, addMuteToggle } from '@app/ui/fx';
+import { startBgm, type BgmTrack } from '@app/ui/music';
 import { paintScene } from '@app/ui/bg';
 
 interface Seg { who: string; text: string; cold?: boolean }
+
+// 会話の背景種別 → BGMトラック（覚醒/遺構/物理＝不穏、盤/地中＝神秘、里＝あたたか、旅立ち＝希望）。
+const BG_TO_BGM: Record<string, BgmTrack> = {
+  village: 'village', ruin: 'ruin', phys: 'ruin', awaken: 'ruin',
+  board: 'under', under: 'under', depart: 'depart', end: 'end',
+};
 
 // 据炉の冷たいアナウンス（§8.7）。最初の本格的な「裂け目」。
 const AWAKEN: Seg[] = [
@@ -38,6 +45,7 @@ export class StoryScene extends Phaser.Scene {
     // 手続き背景（覚醒は冷たい裂け目、それ以外は beat.bg で指定／既定は里）。
     const bgKind = this.isAwaken ? 'awaken' : ((beat?.kind === 'dialog' && beat.bg) || 'village');
     paintScene(this, bgKind as Parameters<typeof paintScene>[1]);
+    startBgm(BG_TO_BGM[bgKind] ?? 'village');
 
     this.box = new DialogBox(this);
 

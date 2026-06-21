@@ -66,6 +66,6 @@ export function addMuteToggle(scene: Phaser.Scene): void {
   const label = (): string => (isMuted() ? '♪ ミュート中 [M]' : '♪ 音あり [M]');
   const t = scene.add.text(CANVAS_W - 14, CANVAS_H - 12, label(), {
     fontFamily: 'monospace', fontSize: '14px', color: '#5b6479',
-  }).setOrigin(1, 1).setDepth(3000);
+  }).setOrigin(1, 1).setDepth(3000).setScrollFactor(0); // カメラがスクロールしても画面固定
   scene.input.keyboard?.on('keydown-M', () => t.setText((toggleMute(), label())));
 }
