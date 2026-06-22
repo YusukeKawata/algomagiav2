@@ -59,6 +59,29 @@ export const ENEMIES: Record<string, Enemy> = {
   ravager:   { id: 'ravager',   name: '狩り場の主', hp: 72, atk: 10, weakness: 'ice',   gold: 90, pool: 'strong', xp: 36, color: 0x9a3050, bigEvery: 3, atkAttr: 'physical', bigAttr: 'physical' },
 };
 
+// 敵ごとの遭遇フレーバー（“読むRPG”の手触り＝同じ攻撃連打でも、現れ方の描写で各モンスターに性格を持たせる）。
+// BattleScene の encounter モードで intro に使う（無ければ「○○が現れた！」）。バランスには一切影響しない。
+export const ENEMY_FLAVOR: Record<string, string> = {
+  mob1:      '霧の中から、痩せた狼が音もなく姿を現した。',
+  mob2:      '一頭ではない。茂みのあちこちで、低い唸りが重なる。',
+  gnawer:    '岩陰で何かが砕ける音。石を噛み砕く顎が、こちらを向いた。',
+  shade:     '足もとの淀みが、ぞろりと人の形に立ち上がる。',
+  sentinel:  'ふたつの頭——いや、双角の獣が、縄張りを侵す者をじっと見据えている。',
+  grazer:    '草陰から、もそりと丸い背が起き上がる。…見た目より、ずっと大きい。',
+  razorbeak: '甲高い羽音。風を裂く嘴が、上空から舞い降りてくる。',
+  gorehoof:  '丘の斜面を、土煙を上げて何かが駆け下りてくる。角猪だ。',
+  emberhound: '熱い息づかい。毛の先が、燠火のように赤く明滅している。',
+  dunecrawler: '足もとの砂が、ぞわりと盛り上がる。砂の下に、潜むものがいた。',
+  mirage:    '陽炎の揺らぎが、ゆらりと輪郭を結ぶ。…どこからが本体か、掴めない。',
+  galeling:  '岩の隙間で、風が異様な音色で鳴く。鳴き声の主が、羽を広げた。',
+  cragmaw:   '岩そのものが裂け、牙の生えた口になった。山道の主は、巨大だ。',
+  burrower:  '坑道の壁を内側から押し破り、節くれだった脚が這い出てくる。',
+  drifter:   '闇に、ぼうと燐光が浮かぶ。光の塊が、ふわりと間合いを詰めてきた。',
+  stalker:   '気配だけが先に立つ。…影が、影のまま、こちらへ滑り寄ってくる。',
+  hexbeetle: 'カチ、カチ、と硬質な音。呪をまとった甲が、鈍く光を弾いた。',
+  ravager:   '狩り場の最奥。積み上がった骨の山が、ぬるりと起き上がる。…これが、主か。',
+};
+
 // 旧名アクセスの互換エイリアス（同一データ）。
 export const PHYS_ENEMIES = ENEMIES;
 export const BOARD_ENEMIES = ENEMIES;

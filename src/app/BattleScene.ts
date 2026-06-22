@@ -5,7 +5,7 @@ import Phaser from 'phaser';
 import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
 import { currentBeat, advance, rewindToLastField } from '@game/flow';
 import { game, grantXp, addStone, maxHp, heroAtk, heroDef, heroResist, boardCircuits, consumeItem, itemCount, faintReturnToTown, fieldResume } from '@game/state';
-import { ENEMIES, type Enemy } from '@game/data/enemies';
+import { ENEMIES, ENEMY_FLAVOR, type Enemy } from '@game/data/enemies';
 import { ITEMS } from '@game/data/items';
 import { rollStone, stoneLabel } from '@game/data/stones';
 import { makeRng } from '@core/rng';
@@ -69,7 +69,8 @@ export class BattleScene extends Phaser.Scene {
     if (data?.mode === 'encounter') {
       this.mode = 'encounter';
       this.enemyId = data.enemyId ?? 'mob1';
-      this.intro = `${ENEMIES[this.enemyId]?.name ?? '魔物'}が現れた！`;
+      // 遭遇フレーバー（読むRPGの手触り）。無ければ従来の「○○が現れた！」。
+      this.intro = ENEMY_FLAVOR[this.enemyId] ?? `${ENEMIES[this.enemyId]?.name ?? '魔物'}が現れた！`;
     } else {
       this.mode = 'flow';
       const beat = currentBeat();
