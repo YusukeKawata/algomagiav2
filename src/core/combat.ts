@@ -62,7 +62,7 @@ export function strikeDamage(rawAtk: number, def: number, attr: Attr, resist: Re
   return Math.max(0, dmg);
 }
 
-export interface ActionResult { state: CombatState; dealt: number; weak: boolean; cost: number; ok: boolean; note?: string }
+export interface ActionResult { state: CombatState; dealt: number; weak: boolean; cost: number; ok: boolean; note?: string; healed?: number }
 
 /** 回路1本を撃つコスト（手書き＝経路の魔石数。最低1）。 */
 export function circuitCost(c: Pick<Circuit, 'stones'>): number { return Math.max(1, c.stones.length); }
@@ -100,6 +100,7 @@ export function heroAttack(s: CombatState): ActionResult {
 
 /**
  * スキル（魔石盤の回路）。コスト＝石数を自由意志から。不足なら ok=false で不変。
+ *   回復(heal)属性＝心域から状態を読み戻して**HP回復**（敵には当たらない・§8.9）。回復量＝skillBaseDamage（長回路ほど大きく戻せる）。
  *   物理属性＝こうげき(atk)に強さを上乗せ（physicalSkillDamage・弱点×2なし）。
  *   元素属性＝強さ＋長回路ボーナス、弱点なら2倍（育った長回路がこうげきを上回る）。
  */
@@ -107,11 +108,17 @@ export function heroSkill(s: CombatState, c: Pick<Circuit, 'stones' | 'strength'
   if (s.outcome !== 'none') return { state: s, dealt: 0, weak: false, cost: 0, ok: false };
   const cost = circuitCost(c);
   if (s.hero.freeWill < cost) return { state: s, dealt: 0, weak: false, cost, ok: false, note: 'not-enough' };
+  const freeWill = s.hero.freeWill - cost;
+  // 回復属性の回路＝損傷前の状態を心域から読み戻す＝HP回復（敵HPは触らない）。
+  if (c.element === 'heal') {
+    const healed = skillBaseDamage(c);
+    const hp = Math.min(s.hero.hpMax, s.hero.hp + healed);
+    return { state: { ...s, hero: { ...s.hero, hp, freeWill } }, dealt: 0, weak: false, cost, ok: true, note: 'heal', healed };
+  }
   const physical = c.element === 'physical';
   const weak = !physical && c.element === s.enemy.weakness;
   const dealt = physical ? physicalSkillDamage(s.hero.atk, c) : (weak ? skillBaseDamage(c) * 2 : skillBaseDamage(c));
   const hp = Math.max(0, s.enemy.hp - dealt);
-  const freeWill = s.hero.freeWill - cost;
   const outcome: Outcome = hp <= 0 ? 'win' : 'none';
   return { state: { ...s, hero: { ...s.hero, freeWill }, enemy: { ...s.enemy, hp }, outcome }, dealt, weak, cost, ok: true };
 }
@@ -121,16 +128,6 @@ export function heroGuard(s: CombatState): ActionResult {
   if (s.outcome !== 'none') return { state: s, dealt: 0, weak: false, cost: 0, ok: false };
   const freeWill = Math.min(s.hero.freeWillMax, s.hero.freeWill + 3);
   return { state: { ...s, hero: { ...s.hero, freeWill, guarding: true } }, dealt: 0, weak: false, cost: 0, ok: true, note: 'guard' };
-}
-
-/** 回復魔法（いやし）：自由意志を払い、心域から“損傷前の状態”を読み戻してHP回復（§8.9）。不足なら不変。 */
-export const MEND_COST = 4;
-export function heroMend(s: CombatState, amount: number): ActionResult {
-  if (s.outcome !== 'none') return { state: s, dealt: 0, weak: false, cost: 0, ok: false };
-  if (s.hero.freeWill < MEND_COST) return { state: s, dealt: 0, weak: false, cost: MEND_COST, ok: false, note: 'not-enough' };
-  const hp = Math.min(s.hero.hpMax, s.hero.hp + amount);
-  const freeWill = s.hero.freeWill - MEND_COST;
-  return { state: { ...s, hero: { ...s.hero, hp, freeWill } }, dealt: 0, weak: false, cost: MEND_COST, ok: true, note: 'mend' };
 }
 
 /** 道具：HP回復。 */

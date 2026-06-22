@@ -82,22 +82,45 @@ function row(w: number, ...features: [number, string][]): string {
 }
 const wall = (w: number): string => '#'.repeat(w);
 
-// ——— 霧の里（広いスクロール村ハブ・36×22） ———
+// ——— 霧の里（広いスクロール村ハブ・36×22。有機的な木立の縁取りで“ただの四角”を崩す） ———
 const VW = 36, VH = 22;
+// 村の機能座標（必ず床＝歩ける/到達できる）。うねる木立の縁取りで潰さないよう保護する。
+//   開始P・南口E・扉g・NPC・調べる点・装飾・帰還着地。建物H/守り石Cは元から非床なので保護不要（最後に上書き）。
+const VILLAGE_FN: [number, number][] = [
+  [18, 17], [18, 21], [6, 6], [6, 7],               // P / 南口E / 扉g / 家の出入口直下
+  [16, 16], [22, 5], [25, 5], [28, 5], [31, 5],     // ニナ・宿・道具/武器/防具屋
+  [9, 13], [27, 12], [14, 8], [30, 14],             // サブNPC
+  [33, 18], [4, 18],                                // 調べる点（井戸・物干し）
+  [18, 19],                                         // 霧の野からの帰還着地
+  [12, 10], [22, 9], [8, 18], [26, 6], [29, 6], [32, 6], [9, 14], // 装飾（床に置く）
+];
 const villageRows: string[] = (() => {
-  const r: string[] = [];
+  const rng = makeRng(7321);
+  // 保護集合＝機能座標＋その4近傍（通路を確保＝縁取りで孤立させない）。
+  const protect = new Set<string>();
+  for (const [x, y] of VILLAGE_FN)
+    for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]] as const) protect.add(`${x + dx},${y + dy}`);
+  const g: string[][] = [];
   for (let y = 0; y < VH; y++) {
-    if (y === 0) { r.push(wall(VW)); continue; }
-    if (y === VH - 1) { r.push(wall(VW).slice(0, 18) + 'E' + wall(VW).slice(19)); continue; } // 南口[E]
-    const feats: [number, string][] = [];
-    // ガロの家（建物 H・x4-9, y3-5）＋扉 g(6,6)
-    if (y >= 3 && y <= 5) for (let x = 4; x <= 9; x++) feats.push([x, 'H']);
-    if (y === 6) feats.push([6, 'g']);
-    if (y === 4) feats.push([18, 'C']);   // 守り石（記念碑）
-    if (y === 17) feats.push([18, 'P']);  // 開始位置
-    r.push(row(VW, ...feats));
+    const r: string[] = [];
+    for (let x = 0; x < VW; x++) r.push((x === 0 || x === VW - 1 || y === 0 || y === VH - 1) ? '#' : '.');
+    g.push(r);
   }
-  return r;
+  // 有機的な木立の縁取り：各内部セルを「縁からの距離 ≤ ゆらぐ余白」なら木'#'に＝うねる外周（中央は開ける）。
+  for (let y = 1; y < VH - 1; y++)
+    for (let x = 1; x < VW - 1; x++) {
+      if (protect.has(`${x},${y}`)) continue;
+      const edge = Math.min(x, VW - 1 - x, y, VH - 1 - y); // 縁からの距離
+      const margin = Math.floor(rng() * 2.4);              // 0..2 のゆらぎ＝うねる縁
+      if (edge <= margin) g[y]![x] = '#';
+    }
+  // 機能タイルを最後に上書き（縁取りに潰されない）。
+  for (let y = 3; y <= 5; y++) for (let x = 4; x <= 9; x++) g[y]![x] = 'H'; // ガロの家（建物）
+  g[6]![6] = 'g';     // 扉
+  g[4]![18] = 'C';    // 守り石（記念碑）
+  g[17]![18] = 'P';   // 開始位置
+  g[VH - 1]![18] = 'E'; // 南口
+  return g.map((r) => r.join(''));
 })();
 
 export const MAPS: Record<string, FieldMap> = {
@@ -105,7 +128,7 @@ export const MAPS: Record<string, FieldMap> = {
     id: 'village',
     rows: villageRows,
     exits: {
-      E: { to: 'path', sx: 2, sy: 7 },         // 南口→森の小道（覚醒後の探索ではワールドマップへ＝FieldSceneが分岐）
+      E: { to: 'path', sx: 2, sy: 12 },        // 南口→霧の野（覚醒後の探索ではワールドマップへ＝FieldSceneが分岐）
       g: { to: 'garo_house', sx: 6, sy: 7 },   // ガロの家へ
     },
     npcs: [
@@ -209,17 +232,37 @@ export const MAPS: Record<string, FieldMap> = {
       { x: 8, y: 2, key: 'flowers', scale: 0.8 },   // 窓辺の鉢
     ],
   },
-  // 森の小道（里→遺構）。不定形の森＝木立の間を縫う。西口[w]→里／東口[e]→遺構。
+  // 霧の野（里→遺構の“旅”）。覚醒前のオーバーランド＝霧の谷を抜け、歌に伝わる遺構へ歩いて辿り着く。
+  //   村[E]→西口[w]で入り、広い霧の野を東へ。点在するランドマークを越え、東の果て[e]で歌の遺構へ。
   path: {
     id: 'path',
-    rows: genCave(25, 15, 1101, [
-      { x: 1, y: 7, ch: 'w' }, { x: 2, y: 7 }, { x: 7, y: 4 }, { x: 13, y: 11 }, { x: 19, y: 5 }, { x: 22, y: 7 }, { x: 23, y: 7, ch: 'e' },
-    ]),
+    rows: genCave(40, 24, 1101, [
+      { x: 1, y: 12, ch: 'w' }, { x: 2, y: 12 }, { x: 8, y: 8 }, { x: 14, y: 16 }, { x: 20, y: 9 },
+      { x: 26, y: 15 }, { x: 32, y: 7 }, { x: 37, y: 12 }, { x: 38, y: 12, ch: 'e' },
+    ], 0.42),
     exits: {
       w: { to: 'village', sx: 18, sy: 19 }, // 西口→里（南口の内側に戻る）
-      e: { to: 'ruin', sx: 2, sy: 9 },       // 東口→歌の遺構
+      e: { to: 'ruin', sx: 2, sy: 9 },       // 東口→歌の遺構（遺構の入口へ）
     },
-    intro: ['霧の薄れた谷ぐちに、細い小道が東へ続いている。木立の影が、まだらに揺れている。'],
+    examines: [
+      { x: 20, y: 9, who: '', title: '霧の野の道標', lines: [
+        '苔むした道標が、霧の中にぽつんと立っている。風雨にかすれた字が、かろうじて読める。',
+        '「東へ、歌の遺構へ。されど、霧は深く、道は遠し」。…里[w]は西。遺構[e]は、まだずっと東だ。',
+      ] },
+      { x: 26, y: 15, who: '', lines: [
+        '崩れた石積み。誰かが旅の無事を祈って組んだものか——こんな石積みが、点々と東へ続いている。',
+        '（昔は、人がこの野を行き交ったのだろうか。…今は、霧と、魔物の影ばかりだ。）',
+      ] },
+    ],
+    decor: [
+      { x: 8, y: 8, key: 'deadTree' }, { x: 32, y: 7, key: 'deadTree', scale: 0.9 },
+      { x: 14, y: 16, key: 'flowers' }, { x: 26, y: 15, key: 'grave', scale: 0.8 },
+    ],
+    intro: [
+      '霧の薄れた谷ぐちを抜けると、見渡すかぎりの霧の野が東へ広がっていた。乳色の靄が、ゆっくりと流れていく。',
+      '歌に伝わる遺構は、この野のずっと向こう——歩いて、歩いて、ようやく辿り着く距離だという。',
+      '（道は、ただ東へ。里[w]へはいつでも戻れる。霧の中、魔物の影が揺れている。気をつけて。）',
+    ],
   },
   // 歌の遺構。崩れた墓所＝入り組んだ石室。最奥に番獣[B]。西口[w]→小道。
   ruin: {
@@ -227,7 +270,7 @@ export const MAPS: Record<string, FieldMap> = {
     rows: genCave(30, 18, 2203, [
       { x: 1, y: 9, ch: 'w' }, { x: 2, y: 9 }, { x: 8, y: 12 }, { x: 15, y: 5 }, { x: 21, y: 13 }, { x: 27, y: 3, ch: 'B' },
     ]),
-    exits: { w: { to: 'path', sx: 22, sy: 7 } }, // 西口→森の小道
+    exits: { w: { to: 'path', sx: 37, sy: 12 } }, // 西口→霧の野（東口[e]の隣に出る）
     examines: [
       { x: 15, y: 5, who: '', lines: ['崩れた祭壇のくぼみに、小さな魔石が落ちている。…拾っておこう。'], give: { gold: 5, pool: 'mid', xp: 5, flag: 'ruin-cache' } },
       { x: 8, y: 12, who: '', lines: ['ひび割れた頭蓋骨。…遺構に挑んで還らなかった者だろうか。'] },

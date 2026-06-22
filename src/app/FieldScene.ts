@@ -3,13 +3,13 @@
 import Phaser from 'phaser';
 import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
 import { currentBeat, advance } from '@game/flow';
-import { fieldResume, game, grantXp, addStone, addItem, maxHp, raiseBoardCap, restFull, setLastTown, recordLore } from '@game/state';
+import { fieldResume, game, grantXp, addStone, addItem, maxHp, unlockMind, restFull, setLastTown, recordLore } from '@game/state';
 import { MAPS, tileAt, findChar, mapCols, mapRows, type FieldMap, type MapExit, type NpcDef, type DecorKey, type TreasureDef } from '@game/data/maps';
 import { ITEMS } from '@game/data/items';
 import { NAMES as N } from '@game/data/names';
 import { ENCOUNTER_POOLS } from '@game/data/enemies';
 import { makeRng, pick } from '@core/rng';
-import { rollStone, makeStone, stoneLabel, GARO_STONE } from '@game/data/stones';
+import { rollStone, makeStone, stoneLabel, GARO_STONE, RIESE_STONE } from '@game/data/stones';
 import { DialogBox } from '@app/ui/dialogbox';
 import { fadeInOnCreate, addMuteToggle, transitionTo, flash } from '@app/ui/fx';
 import { playSfx } from '@app/ui/sfx';
@@ -482,15 +482,16 @@ export class FieldScene extends Phaser.Scene {
         `あたしはリーゼ。石工——魔石をいじるのが仕事。この里じゃ「余計なこと」って煙たがられてるけどね。`,
         `見せて、その魔石。…へえ、ずいぶん雑多に集めたね。なら「${N.workshop}」の出番だ。`,
         `安い魔石を素材に捧げれば、別の一枚を鍛えられる。魔素量を盛るのも、属性を移すのもできる。文様だけは変えられないけどね。`,
-        `それと——あんたの盤、まだ狭い。心域を少し開いてやる。広い盤なら、長い回路や回復の魔法も組めるようになる。`,
+        `それと——あんたの盤、まだ縦一本きりだろう。心域を開いてやる。横に広がれば、長い回路が組める。`,
+        `この石も持っていきな。「癒し」の文様だ。盤に嵌めて回路をつなげば、戦いの中で体を繕える——心域から、損なわれる前の自分を読み戻すのさ。`,
       ], () => {
         game.flags['act2'] = true;
-        game.flags['healMagic'] = true;       // 心域＝回復魔法の入口（§8.9）
-        raiseBoardCap(4);                      // 盤上限 3×3 → 4×4（即1段広がる）
+        unlockMind();                          // 心域＝横拡張を解禁＋到達Lvぶん横へ追いつかせる（盤が一気に横へ広がる）
+        addStone(makeStone(RIESE_STONE));      // 回復属性石を付与＝盤に嵌めて回路化すると「回復スキル」になる（§8.9）
         this.updateHud();
         this.openTalk(N.maker, [
-          `はい、これで心域が開いた。盤がひとまわり広くなったはずだ（上限が伸びた）。`,
-          `戦って強くなれば、盤はさらに育つ。…さあ、工房を使ってみな。`,
+          `はい、これで心域が開いた。盤が横にぐっと広がったはずだ——到達した強さのぶんだけ、まとめて。`,
+          `癒しの石は[C]の魔石盤で嵌めな。左から右へ一本つなげば、戦闘の「スキル」で回復が撃てる。…さあ、工房を使ってみな。`,
         ], () => this.openWorkshop());
       });
       return;
@@ -525,7 +526,7 @@ export class FieldScene extends Phaser.Scene {
       case 'village': return N.village;
       case 'garo_house': return `${N.elder}の家`;
       case 'hero_room': return '自分の部屋';
-      case 'path': return '森の小道';
+      case 'path': return '霧の野';
       case 'world': return '草原';
       case 'hills': return '丘陵の道';
       case 'barrens': return '涸れ谷の荒野';
@@ -547,9 +548,9 @@ export class FieldScene extends Phaser.Scene {
     if (this.map.id === 'village') {
       if (game.skillUnlocked) return '▶ 南門[E]へ（魔物が出る）。[C]で魔石盤・露店で装備';
       if (game.flags['boss-cleared']) return `▶ ${N.elder}の家[g]へ戻ろう（南西の家）`;
-      return game.flags['quest'] ? '▶ 露店で装備を整え、南門[E]→森の小道→遺構へ' : `▶ ${N.elder}の家[g]へ（南西の家・扉でZ）`;
+      return game.flags['quest'] ? '▶ 露店で装備を整え、南門[E]→霧の野→遺構へ' : `▶ ${N.elder}の家[g]へ（南西の家・扉でZ）`;
     }
-    if (this.map.id === 'path') return '▶ 東口[e]→遺構 / 西口[w]→里（[Z]で調べる）';
+    if (this.map.id === 'path') return '▶ 霧の野を東へ。東の果て[e]→歌の遺構 / 西口[w]→里（[Z]で調べる）';
     if (this.map.id === 'world') return '▶ 東口[e]→丘陵へ（旅は続く）。北の洞窟[K]は任意。里[V]で宿/店/魔石盤';
     if (this.map.id === 'hills') return '▶ 東口[e]→荒野へ。見晴らし台で来た道を振り返れる。西口[w]→草原';
     if (this.map.id === 'barrens') return '▶ 東口[e]→山道の関へ。魔物が手強い——装備と道具を。西口[w]→丘陵';

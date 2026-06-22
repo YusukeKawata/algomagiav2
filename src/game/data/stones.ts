@@ -21,6 +21,10 @@ export function makeStone(t: StoneTemplate): Stone {
 // 最初のスロットは 1×1（magic-stone-workshop.md §9）なので、これ1個で最初の回路が1本成立する。
 export const GARO_STONE: StoneTemplate = { shape: 0, attr: 'physical', value: 1 };
 
+// 石工リーゼが手渡す回復属性石＝左→右の一本線(─)・回復属性・魔素量6（§8.9・心域＝回復の入口）。
+// heal-優勢の回路を組むと「スキル」が回復になる＝盤に嵌めれば回復魔法が使えるようになる。
+export const RIESE_STONE: StoneTemplate = { shape: 0, attr: 'heal', value: 6 };
+
 // 形インデックス（boards.ts SHAPES）: 0=─ 1=│ 2=┌ 3=┐ 4=└ 5=┘ 6=├ 7=┼
 // 雑魚＝安い直線/曲がりの低 value。強敵＝分岐/十字や高 value も混じる。
 const T = (shape: number, attr: Attr, value: number): StoneTemplate => ({ shape, attr, value });

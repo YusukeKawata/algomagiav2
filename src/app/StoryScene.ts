@@ -2,7 +2,7 @@
 // 〔アート未〕立ち絵/背景は差し替え枠。覚醒だけ背景を暗く沈め、据炉の声を cold スタイルで出す。
 import Phaser from 'phaser';
 import { currentBeat, advance } from '@game/flow';
-import { game, restFull, catchUpBoardToLevel } from '@game/state';
+import { game, restFull } from '@game/state';
 import { DialogBox } from '@app/ui/dialogbox';
 import { fadeInOnCreate, addMuteToggle } from '@app/ui/fx';
 import { startBgm, type BgmTrack } from '@app/ui/music';
@@ -69,7 +69,8 @@ export class StoryScene extends Phaser.Scene {
     if (this.box.press() === 'skipped') return; // 表示途中なら全表示だけ（1入力=1アクション）
     this.i++;
     if (this.i < this.segs.length) { this.showCurrent(); return; }
-    if (this.isAwaken) { game.skillUnlocked = true; restFull(); catchUpBoardToLevel(); } // 覚醒＝スキル解禁＋全快＋盤を到達Lvまで拡張
+    // 覚醒＝自由意志ゲートの解禁＝スキルが使える＋全快。盤は 1×1 のまま（心域は第二の里で解禁・world-bible 解禁順）。
+    if (this.isAwaken) { game.skillUnlocked = true; restFull(); }
     advance(this);
   }
 }

@@ -24,9 +24,13 @@ export interface GameState {
   armorId: string;        // 装備中の防具（ARMORS の id・既定 'cloth'）
   mind: number;           // 心域＝魔石盤の横マス数
   compute: number;        // 演算＝魔石盤の縦マス数
-  boardCap: number;       // 盤の各辺の上限（第1幕=3／第2幕の工房で4へ引き上げ）
+  boardCap: number;       // 盤の各辺の上限（覚醒直後=1／心域解禁で4へ）
   board: Board;           // 装備中の魔石盤（駒配置を保持＝戦闘外で編集し戦闘で使う）
-  skillUnlocked: boolean; // 据炉での覚醒で true（盤＝スキルが使える）
+  skillUnlocked: boolean; // 据炉での覚醒で true（盤＝スキルが使える＝自由意志ゲート）
+  // ゲージ解禁（world-bible 解禁順）：自由意志(覚醒)→心域(第二の里・横拡張)→霊脈→演算(並列の町・縦拡張)。
+  // 解禁前のゲージ方向には盤が伸びない＝覚醒直後は 1×1、心域解禁で横へ、演算解禁で縦へ。
+  mindUnlocked: boolean;    // 心域＝横拡張の解禁（第二の里の工房）
+  computeUnlocked: boolean; // 演算＝縦拡張＝並列度の解禁（並列の町・第2幕後半）
   lastTownMapId: string;  // 直近に訪れた街（敗北時の帰還先＝'village'|'underville'）
   codex: CodexEntry[];    // 記録帳＝調べた事・訪れた土地の記憶（読み返せる＝“読むRPG”の収集要素）
   flags: Record<string, boolean>;
@@ -56,9 +60,11 @@ function makeFresh(): GameState {
     armorId: 'cloth',
     mind: 1,                // 覚醒直後の盤は 1×1（magic-stone-workshop.md §9）
     compute: 1,
-    boardCap: 3,            // 第1幕は 3×3 が上限（第2幕の工房で 4 へ）
+    boardCap: 1,            // 覚醒直後は 1×1 のまま（心域解禁で 4 へ・演算は並列の町まで縦ロック）
     board: emptyBoard(1, 1),
     skillUnlocked: false,
+    mindUnlocked: false,
+    computeUnlocked: false,
     lastTownMapId: 'village',
     codex: [],
     flags: {},
@@ -110,8 +116,6 @@ export function heroDef(): number { return ARMORS[game.armorId]?.def ?? 0; }
 export function maxHp(): number { return game.heroHpMax + (ARMORS[game.armorId]?.hpBonus ?? 0); }
 /** 装備中の防具の属性耐性/弱点（敵の属性攻撃の受けに効く）。 */
 export function heroResist(): Resist { return ARMORS[game.armorId]?.resist ?? {}; }
-/** 心域から導く回復魔法の治癒量（覚醒＋工房で解禁。心域が広いほど大きく戻せる）。 */
-export function mendPower(): number { return 8 + game.mind * 6; }
 
 /** 装備中の魔石盤で成立している回路（＝撃てるスキル一覧）。 */
 export function boardCircuits(): Circuit[] { return circuits(game.board); }
@@ -166,12 +170,25 @@ export function clearCell(x: number, y: number): void {
 
 // ——— 盤の成長（心域/演算）。配置済みの駒は範囲内なら保持 ———
 
-/** 覚醒後のレベルアップで盤を1段広げる次寸法（心域=横を優先→演算=縦、上限=cap）。純関数＝テスト可。 */
-export function nextBoardDims(mind: number, compute: number, cap = 3): { mind: number; compute: number } {
-  if (mind < cap && mind <= compute) return { mind: mind + 1, compute };
-  if (compute < cap) return { mind, compute: compute + 1 };
-  if (mind < cap) return { mind: mind + 1, compute };
+/**
+ * レベルアップで盤を1段広げる次寸法。純関数＝テスト可。
+ * **解禁ゲート**（world-bible 解禁順）：横(心域)は mind 解禁後のみ・縦(演算)は compute 解禁後のみ伸びる。
+ *   両方ロック（覚醒直後）＝1×1のまま。心域だけ解禁＝横へ（最大 cap×1＝並列度1）。演算も解禁＝心域優先で縦も。
+ */
+export function nextBoardDims(
+  mind: number, compute: number, cap = 3,
+  unlock: { mind: boolean; compute: boolean } = { mind: true, compute: true },
+): { mind: number; compute: number } {
+  const canW = unlock.mind && mind < cap;
+  const canH = unlock.compute && compute < cap;
+  if (canW && (mind <= compute || !canH)) return { mind: mind + 1, compute };
+  if (canH) return { mind, compute: compute + 1 };
   return { mind, compute };
+}
+
+/** 現在の解禁状態（grantXp/解禁関数が nextBoardDims に渡す）。 */
+function unlockFlags(): { mind: boolean; compute: boolean } {
+  return { mind: game.mindUnlocked, compute: game.computeUnlocked };
 }
 
 export function setBoardSize(mind: number, compute: number): void {
@@ -186,12 +203,33 @@ export function setBoardSize(mind: number, compute: number): void {
   game.board = b;
 }
 
-/** 盤の上限を引き上げ、すぐ1段広げる（第2幕・工房の「盤の拡張」）。上限が伸びた時だけ成長する。 */
-export function raiseBoardCap(cap: number): boolean {
-  if (cap <= game.boardCap) return false;
-  game.boardCap = cap;
-  const d = nextBoardDims(game.mind, game.compute, game.boardCap);
-  setBoardSize(d.mind, d.compute);
+/** 解禁済みゲージに沿って、現在レベルぶん盤を 1×1 から広げ直す（解禁時の“追いつき”）。 */
+function catchUpBoard(): void {
+  setBoardSize(1, 1);
+  for (let l = 1; l < game.level; l++) {
+    const d = nextBoardDims(game.mind, game.compute, game.boardCap, unlockFlags());
+    setBoardSize(d.mind, d.compute);
+  }
+}
+
+/**
+ * 心域＝横拡張を解禁（第2幕・地中の里の工房）。上限を cap へ上げ、到達レベルぶん横へ追いつかせる
+ * ＝解禁した瞬間に複数の横スロットを使える（「2つ目の町で心域がスロットに反映される」）。既に解禁済みなら false。
+ */
+export function unlockMind(cap = 4): boolean {
+  if (game.mindUnlocked) return false;
+  game.mindUnlocked = true;
+  game.boardCap = Math.max(game.boardCap, cap);
+  catchUpBoard();
+  return true;
+}
+
+/** 演算＝縦拡張＝並列度を解禁（第2幕後半・並列の町）。横と同様に到達レベルぶん追いつかせる。既に解禁済みなら false。 */
+export function unlockCompute(cap = 4): boolean {
+  if (game.computeUnlocked) return false;
+  game.computeUnlocked = true;
+  game.boardCap = Math.max(game.boardCap, cap);
+  catchUpBoard();
   return true;
 }
 
@@ -272,8 +310,12 @@ export function grantXp(amount: number): XpResult {
     // 全快ではなく、上限の増加ぶんだけ現在値を加える（成長の手応えは出すが回復ではない）。
     game.heroHp = Math.min(maxHp(), game.heroHp + Math.max(0, game.heroHpMax - prevHpMax));
     game.freeWill = Math.min(game.freeWillMax, game.freeWill + Math.max(0, game.freeWillMax - prevFwMax));
-    // 覚醒後は、強くなる（レベルアップ）たびに魔石盤も1段広がる＝戦って盤を育てる。上限は工房で引き上げ。
-    if (game.skillUnlocked) { const d = nextBoardDims(game.mind, game.compute, game.boardCap); setBoardSize(d.mind, d.compute); }
+    // 覚醒後は、強くなる（レベルアップ）たびに盤が1段広がる——ただし解禁済みゲージの方向だけ。
+    //   覚醒直後（心域ロック）は伸びない＝1×1のまま。心域解禁後は横へ、演算解禁後は縦へ。
+    if (game.skillUnlocked && (game.mindUnlocked || game.computeUnlocked)) {
+      const d = nextBoardDims(game.mind, game.compute, game.boardCap, unlockFlags());
+      setBoardSize(d.mind, d.compute);
+    }
   }
   // 上限が下がることはないが、念のため現在値を上限内にクランプ（装備変更などとの整合）。
   game.heroHp = Math.min(game.heroHp, maxHp());
@@ -285,19 +327,6 @@ export function grantXp(amount: number): XpResult {
 export function restFull(): void {
   game.heroHp = maxHp();
   game.freeWill = game.freeWillMax;
-}
-
-/**
- * 覚醒（スキル解禁）時に、それまでに上げたレベルぶん盤を一気に育てる。
- * 盤はレベルで育つが解禁が遅い（覚醒＝L3-4）ため、解禁時点で1×1だとスロットを選べず窮屈。
- * 解禁時に“追いつかせる”ことで、最初から数マスを自由に配置できる（ponti 指摘の改善）。
- */
-export function catchUpBoardToLevel(): void {
-  setBoardSize(1, 1);
-  for (let l = 1; l < game.level; l++) {
-    const d = nextBoardDims(game.mind, game.compute, game.boardCap);
-    setBoardSize(d.mind, d.compute);
-  }
 }
 
 export function resetGame(): void {
