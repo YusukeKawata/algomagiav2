@@ -3,7 +3,7 @@
 // 自動再生制限：AudioContext はユーザー操作後に生成される（sfx.audioCtx 経由）。それまでは無音でスケジュールだけ進む。
 import { audioCtx, isMuted } from '@app/ui/sfx';
 
-export type BgmTrack = 'title' | 'village' | 'ruin' | 'battle' | 'under' | 'depart' | 'end';
+export type BgmTrack = 'title' | 'village' | 'ruin' | 'battle' | 'under' | 'depart' | 'end' | 'travel';
 
 // 各トラック＝テンポ・基準周波数・音色・コード進行（小節ごとの根音半音）・アルペジオ（8分ごとの半音列）。
 interface TrackDef {
@@ -30,6 +30,8 @@ const TRACKS: Record<BgmTrack, TrackDef> = {
   under:   { bpm: 58, root: 130.8, bass: 'sine',     lead: 'triangle', leadGain: 0.030, chords: [0, 3, 5, 3],    arp: [0, 5, 8, 12, 8, 5, 3, 8] },
   // 旅立ち：希望のある長調。
   depart:  { bpm: 76, root: 246.9, bass: 'sine',     lead: 'triangle', leadGain: 0.034, chords: [0, 5, 7, 5],    arp: [0, 4, 7, 11, 12, 7, 4, 7] },
+  // 旅路：歩き続ける長い道。淡々と流れる中庸の長調＝広い空・遠い目的地（孤独だが暗くない）。
+  travel:  { bpm: 66, root: 233.1, bass: 'sine',     lead: 'triangle', leadGain: 0.030, chords: [0, 7, 5, 9],    arp: [0, 7, 12, 9, 7, 4, 7, 2] },
   // エンド：静かな締め。
   end:     { bpm: 56, root: 196.0, bass: 'sine',     lead: 'sine',     leadGain: 0.030, chords: [0, -3, -5, 0],  arp: [0, 7, 12, 7, 3, 7, 0, 3] },
 };

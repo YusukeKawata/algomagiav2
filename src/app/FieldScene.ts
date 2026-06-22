@@ -120,7 +120,7 @@ export class FieldScene extends Phaser.Scene {
     }
 
     paintScene(this, this.bgKind()).setScrollFactor(0); // 背景はスクロールしても画面に固定（バックドロップ）
-    startBgm(this.bgKind() === 'under' ? 'under' : this.bgKind() === 'ruin' ? 'ruin' : 'village');
+    startBgm(this.bgmTrack());
     ensureHumanoid(this, 'hero', HERO_PAL);
     this.buildStatic();
     this.playerImg = this.add.image(this.cx(this.px), this.cy(this.py), humanoidKey('hero', 'down', 0))
@@ -153,6 +153,15 @@ export class FieldScene extends Phaser.Scene {
       if (recordLore(`place:${this.map.id}`, `${this.mapName()} —— 土地の記憶`, this.map.intro)) this.flashRecorded(); // 訪れた土地を記録帳へ
       this.openTalk('', this.map.intro);
     }
+  }
+
+  /** マップ→BGMトラック。長い旅路（霧の野/草原/丘陵/荒野/山道）は専用の「旅路」テーマ＝歩き続ける長い道。 */
+  private bgmTrack(): 'under' | 'ruin' | 'village' | 'travel' {
+    const id = this.map.id;
+    if (id === 'path' || id === 'world' || id === 'hills' || id === 'barrens' || id === 'pass') return 'travel';
+    if (id === 'underville' || id === 'tunnels') return 'under';
+    if (id === 'ruin' || id === 'wilds') return 'ruin';
+    return 'village';
   }
 
   /** マップ→背景アート。地下＝under、洞窟/遺構/山道＝ruin、荒野＝depart、それ以外＝village。 */
