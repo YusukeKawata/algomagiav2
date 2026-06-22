@@ -166,8 +166,16 @@ export class MenuScene extends Phaser.Scene {
       this.body.setText([`【記録帳】${e.title}`, '', ...e.lines, '', '[Z/X] 一覧へ戻る']);
       return;
     }
-    const lines = [`記録帳  [↑↓]選んで [Z]読む （調べた事・訪れた土地 ${list.length}件）`, ''];
-    const { from, to } = this.windowRange(list.length, this.idx, 18);
+    // 分類カウンタ＝何がどれだけ集まったか一目で（収集の手応え）。
+    const beast = list.filter((e) => e.id.startsWith('bestiary:')).length;
+    const land = list.filter((e) => e.id.startsWith('place:') || e.id.startsWith('camp:')).length;
+    const found = list.length - beast - land;
+    const lines = [
+      `記録帳  [↑↓]選んで [Z]読む  （全${list.length}件）`,
+      `　魔物図鑑 ${beast}種 ／ 土地と旅の記憶 ${land} ／ 調べたこと ${found}`,
+      '',
+    ];
+    const { from, to } = this.windowRange(list.length, this.idx, 17);
     if (from > 0) lines.push('  ▲ （上に続く）');
     list.slice(from, to).forEach((e, j) => lines.push(`${from + j === this.idx ? '▶' : ' '}${e.title}`));
     if (to < list.length) lines.push('  ▼ （下に続く）');
