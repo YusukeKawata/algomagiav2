@@ -34,9 +34,11 @@ describe('物理戦: 1ターン', () => {
   });
 });
 
-describe('物理戦: バランス不変条件（第1幕が完走できる）', () => {
-  it('番獣は覚醒前でも素手で勝てる（無限リトライにならない）', () => {
-    expect(survivesStraightFight(30, PHYS_ENEMIES['boss']!, PHYS_POWER)).toBe(true);
+// ※ phys.ts は LEGACY（実戦は core/combat.ts）。番獣の正典バランスは combat.test.ts（看破/予兆/全回復リトライ込み）。
+//   ここは「単純な殴り合い」モデルでの参考不変条件＝中の上ボスを反映（無対策L1は負け／育てば勝てる）。
+describe('物理戦(LEGACY): バランス参考（中の上ボス）', () => {
+  it('番獣は無対策(L1素手)だと殴り合いでは負ける＝「そのまま行くと負ける」', () => {
+    expect(survivesStraightFight(30, PHYS_ENEMIES['boss']!, PHYS_POWER)).toBe(false);
   });
 
   it('道中のどの遭遇敵もレベル1の素手で勝てる（成長前でも詰まない）', () => {
@@ -46,9 +48,9 @@ describe('物理戦: バランス不変条件（第1幕が完走できる）', (
     }
   });
 
-  it('成長するほど番獣の撃破は速く・安全になる（火力が単調）', () => {
+  it('成長すれば番獣を撃破できる（L1は負け→L5で勝てる＝火力が活きる）', () => {
     const boss = PHYS_ENEMIES['boss']!;
-    expect(survivesStraightFight(statsForLevel(1).hpMax, boss, statsForLevel(1).power)).toBe(true);
+    expect(survivesStraightFight(statsForLevel(1).hpMax, boss, statsForLevel(1).power)).toBe(false);
     expect(survivesStraightFight(statsForLevel(5).hpMax, boss, statsForLevel(5).power)).toBe(true);
   });
 });

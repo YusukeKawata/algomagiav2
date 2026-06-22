@@ -4,8 +4,16 @@ import Phaser from 'phaser';
 import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
 import { Typewriter } from '@app/ui/typewriter';
 import { playSfx } from '@app/ui/sfx';
+import { game } from '@game/state';
+import { NAMES } from '@game/data/names';
 
 const COLD_COLOR = '#9fb6d6'; // 据炉の「冷たい声」用（monospace＋青白）
+
+// 台本中の主人公の既定名トークンを、プレイヤーが入力した名前へ差し替える（名前を決めた意味を全会話に通す）。
+function withHeroName(s: string): string {
+  if (!s || game.heroName === NAMES.heroDefault) return s;
+  return s.split(NAMES.heroDefault).join(game.heroName);
+}
 
 export interface ShowOpts { cold?: boolean }
 
@@ -49,10 +57,11 @@ export class DialogBox {
   show(who: string, text: string, opts?: ShowOpts): void {
     this.setVisible(true);
     this.indicator.setVisible(false);
-    this.nameText.setText(who).setVisible(who !== '');
+    const name = withHeroName(who);
+    this.nameText.setText(name).setVisible(name !== '');
     const cold = opts?.cold ?? false;
     this.bodyText.setColor(cold ? COLD_COLOR : COLORS.text).setFontFamily(cold ? 'monospace' : 'sans-serif');
-    this.tw.play(text);
+    this.tw.play(withHeroName(text));
   }
 
   /** 入力1回ぶんの処理。表示途中なら全表示して 'skipped'、表示済みなら 'advance' を返す（1入力=1アクション）。 */

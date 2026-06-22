@@ -35,6 +35,9 @@ const DEV = (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV ?? 
 if (DEV) {
   (window as Window & { __game?: Phaser.Game }).__game = gameInstance;
   // dev限定: ゲーム状態を目視/自動プレイ計測から読めるように公開（本番では剥がれる）。
-  void import('@game/state').then((m) => { (window as unknown as { __state?: unknown }).__state = m.game; });
+  void import('@game/state').then((m) => {
+    (window as unknown as { __state?: unknown }).__state = m.game;
+    (window as unknown as { __setBoard?: unknown }).__setBoard = m.setBoardSize; // dev: 目視ツールが実際の盤を作れる
+  });
   void import('@game/flow').then((m) => { (window as unknown as { __flow?: unknown }).__flow = m; });
 }

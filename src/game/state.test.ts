@@ -1,10 +1,42 @@
 // 第2幕の状態ロジック（魔石工房の集積＝強化/属性うつし・盤上限の引き上げ）のテスト。
 // 文様(edges)は不変・value/属性のみ変わる、素材は消える、盤の上限が伸びると1段広がる、を固定。
 import { describe, it, expect, beforeEach } from 'vitest';
-import { game, addStone, fuseValue, fuseAttr, raiseBoardCap, placeStone, resetGame, freeStones } from '@game/state';
+import { game, addStone, fuseValue, fuseAttr, raiseBoardCap, placeStone, resetGame, freeStones, setLastTown, faintReturnToTown, maxHp, recordLore } from '@game/state';
 import { makeStone } from '@game/data/stones';
 
 beforeEach(() => resetGame());
+
+describe('記録帳（ロア収集）', () => {
+  it('同じ id は一度だけ記録される（重複読みでも増えない）。新規追加だけ true', () => {
+    expect(recordLore('ex:a', '道標', ['東へ。'])).toBe(true);
+    expect(recordLore('ex:a', '道標', ['東へ。'])).toBe(false); // 再読は記録しない
+    expect(recordLore('place:world', '草原', ['広い。'])).toBe(true);
+    expect(game.codex.map((e) => e.id)).toEqual(['ex:a', 'place:world']); // 発見順
+  });
+});
+
+describe('敗北→直近の街へ（ponti 指示：死んだら街に戻す）', () => {
+  it('ゴールド半分・HP/自由意志は全回復・記録した直近の街へ戻る（経験/魔石は保持）', () => {
+    game.gold = 41;
+    game.heroHp = 1; game.freeWill = 0;
+    setLastTown('underville');
+    addStone(makeStone({ shape: 0, attr: 'fire', value: 2 })); // 魔石は失わない
+    const dest = faintReturnToTown();
+    expect(game.gold).toBe(20);            // floor(41/2)
+    expect(dest.lostGold).toBe(21);        // 41 - 20
+    expect(game.heroHp).toBe(maxHp());     // 全回復
+    expect(game.freeWill).toBe(game.freeWillMax);
+    expect(dest.mapId).toBe('underville'); // 直近の街
+    expect(game.stones.length).toBe(1);    // 魔石は保持
+  });
+
+  it('街を訪れていなければ既定＝霧の里へ戻る。街以外の setLastTown は無視', () => {
+    setLastTown('world');                  // 街ではない＝無視
+    expect(game.lastTownMapId).toBe('village');
+    const dest = faintReturnToTown();
+    expect(dest.mapId).toBe('village');
+  });
+});
 
 describe('魔石工房：集積（強化＝魔素量+1）', () => {
   it('素材を1つ捧げて対象の value が+1、素材は消える、文様は不変', () => {

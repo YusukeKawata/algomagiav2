@@ -3,9 +3,9 @@
 // モード: flow=台本の戦闘(勝利で advance) / encounter=フィールドの遭遇(勝利でフィールド復帰)。
 import Phaser from 'phaser';
 import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
-import { currentBeat, advance } from '@game/flow';
-import { game, grantXp, addStone, maxHp, heroAtk, heroDef, heroResist, mendPower, boardCircuits, consumeItem, itemCount } from '@game/state';
-import { ENEMIES, scaleEnemy, type Enemy } from '@game/data/enemies';
+import { currentBeat, advance, rewindToLastField } from '@game/flow';
+import { game, grantXp, addStone, maxHp, heroAtk, heroDef, heroResist, mendPower, boardCircuits, consumeItem, itemCount, faintReturnToTown, fieldResume } from '@game/state';
+import { ENEMIES, type Enemy } from '@game/data/enemies';
 import { ITEMS } from '@game/data/items';
 import { rollStone, stoneLabel } from '@game/data/stones';
 import { makeRng } from '@core/rng';
@@ -20,8 +20,17 @@ import { playSfx } from '@app/ui/sfx';
 import { startBgm } from '@app/ui/music';
 import { paintScene } from '@app/ui/bg';
 import { ATTR_COLOR } from '@app/ui/attrs';
+import { ensureMonster, monsterKey, monsterPalette, ensureHumanoid, humanoidKey, heroPalette, type MonsterShape } from '@app/ui/sprites';
 
 const EX = CANVAS_W / 2, EY = 220;   // 敵トークン
+// 敵ID→ドット絵シルエット（同系統は同じ形・色だけ変える）。
+const MON_SHAPE: Record<string, MonsterShape> = {
+  mob1: 'beast', mob2: 'beast', gnawer: 'beast', shade: 'blob', sentinel: 'beast', boss: 'beast',
+  awakened: 'beast', frost: 'beast', spark: 'bug', gale: 'bird', burrower: 'bug', drifter: 'blob',
+  grazer: 'beast', razorbeak: 'bird', emberhound: 'beast', dunecrawler: 'bug', mirage: 'blob',
+  stalker: 'beast', hexbeetle: 'bug', ravager: 'beast',
+};
+const HERO_PAL = heroPalette(0x3a6ea5, { hair: 0x4a3220 });
 type Phase = 'root' | 'skill' | 'item' | 'win' | 'lose';
 interface Cmd { key: 'attack' | 'skill' | 'mend' | 'item' | 'guard'; label: string }
 const ROOT_BASE: Cmd[] = [
@@ -48,11 +57,16 @@ export class BattleScene extends Phaser.Scene {
   private text!: Phaser.GameObjects.Text;
   private menu!: Phaser.GameObjects.Text;
   private rewarded = false;
+  private winFlag?: string;   // 任意ボス等＝撃破時に立てる flag（再戦防止）
+  private enemyImg!: Phaser.GameObjects.Image; // 魔物のドット絵
+  private heroImg!: Phaser.GameObjects.Image;  // 主人公のドット絵（左下・右向き）
+  private idleFrame = 0;
 
   constructor() { super('Battle'); }
 
-  create(data?: { mode?: string; enemyId?: string }): void {
+  create(data?: { mode?: string; enemyId?: string; winFlag?: string; fixed?: boolean }): void {
     fadeInOnCreate(this);
+    this.winFlag = data?.winFlag;
     if (data?.mode === 'encounter') {
       this.mode = 'encounter';
       this.enemyId = data.enemyId ?? 'mob1';
@@ -63,9 +77,8 @@ export class BattleScene extends Phaser.Scene {
       this.enemyId = beat?.kind === 'battle' ? beat.enemyId : 'mob1';
       this.intro = beat?.kind === 'battle' ? beat.intro : '';
     }
-    const base = ENEMIES[this.enemyId] ?? ENEMIES['mob1']!;
-    // 遭遇モードの敵だけ到達レベルで軽くスケール（フロー/ボスは台本どおりの固定値）。
-    this.enemyDef = this.mode === 'encounter' ? scaleEnemy(base, game.level) : base;
+    // 敵は地方ごとに強さ固定（レベルスケールしない＝同名の敵が強くなるバグを撤廃・ponti指示）。
+    this.enemyDef = ENEMIES[this.enemyId] ?? ENEMIES['mob1']!;
     this.color = this.enemyDef.color ?? 0xb0405a;
     this.cs = this.fresh();
     this.log = this.intro;
@@ -76,18 +89,36 @@ export class BattleScene extends Phaser.Scene {
     paintScene(this, game.skillUnlocked ? 'board' : 'phys');
     startBgm('battle');
     this.g = this.add.graphics();
-    this.text = this.add.text(72, 92, '', { fontFamily: 'monospace', fontSize: '19px', color: COLORS.text, lineSpacing: 7 });
-    this.menu = this.add.text(72, CANVAS_H - 196, '', { fontFamily: 'monospace', fontSize: '21px', color: COLORS.text, lineSpacing: 8 });
+
+    // 魔物＆主人公のドット絵（手続き生成）。魔物はシルエット別・色は敵色。
+    const shape = MON_SHAPE[this.enemyId] ?? 'beast';
+    ensureMonster(this, `mon_${this.enemyId}`, shape, monsterPalette(this.color));
+    this.enemyImg = this.add.image(EX, EY, monsterKey(`mon_${this.enemyId}`, 0)).setDisplaySize(132, 132).setDepth(4);
+    ensureHumanoid(this, 'hero', HERO_PAL);
+    this.heroImg = this.add.image(150, EY + 40, humanoidKey('hero', 'right', 0)).setOrigin(0.5, 0.7).setDisplaySize(84, 84).setDepth(4);
+    // ゆっくりした待機アニメ（2フレーム交互）＝生き物らしさ。
+    this.time.addEvent({ delay: 360, loop: true, callback: () => {
+      this.idleFrame ^= 1;
+      this.enemyImg.setTexture(monsterKey(`mon_${this.enemyId}`, this.idleFrame));
+      this.heroImg.setTexture(humanoidKey('hero', 'right', this.idleFrame));
+    } });
+
+    this.text = this.add.text(72, 92, '', { fontFamily: 'monospace', fontSize: '19px', color: COLORS.text, lineSpacing: 7, wordWrap: { width: CANVAS_W - 130 } });
+    this.menu = this.add.text(72, CANVAS_H - 196, '', { fontFamily: 'monospace', fontSize: '21px', color: COLORS.text, lineSpacing: 8, wordWrap: { width: CANVAS_W - 130 } });
 
     this.input.keyboard?.on('keydown', (ev: KeyboardEvent) => this.onKey(ev.key));
     addMuteToggle(this);
     this.render();
   }
 
-  private fresh(): CombatState {
+  /** 戦闘開始状態。full=false は現在のHP/自由意志を持ち越す（消耗）。full=true は全回復（敗北リトライ＝詰み防止）。 */
+  private fresh(full = false): CombatState {
     const e = this.enemyDef;
     return startCombat(
-      { hpMax: maxHp(), freeWillMax: game.freeWillMax, atk: heroAtk(), def: heroDef(), resist: heroResist() },
+      {
+        hpMax: maxHp(), freeWillMax: game.freeWillMax, atk: heroAtk(), def: heroDef(), resist: heroResist(),
+        hp: full ? maxHp() : game.heroHp, freeWill: full ? game.freeWillMax : game.freeWill,
+      },
       { name: e.name, hp: e.hp, atk: e.atk, weakness: e.weakness, bigEvery: e.bigEvery, atkAttr: e.atkAttr, bigAttr: e.bigAttr, multi: e.multi },
     );
   }
@@ -106,7 +137,7 @@ export class BattleScene extends Phaser.Scene {
   private onKey(key: string): void {
     const k = key.toLowerCase();
     if (this.phase === 'win') { if (k === 'z' || k === 'enter') this.finishWin(); return; }
-    if (this.phase === 'lose') { if (k === 'z' || k === 'enter') this.retry(); return; }
+    if (this.phase === 'lose') { if (k === 'z' || k === 'enter') this.faint(); return; }
 
     if (key === 'ArrowUp') { this.moveSel(-1); return; }
     if (key === 'ArrowDown') { this.moveSel(1); return; }
@@ -228,7 +259,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.cs.outcome === 'lose') {
       playSfx('lose');
       this.phase = 'lose';
-      this.log = `${actionLog}…${name}に倒された。[Z]でやり直す`;
+      this.log = `${actionLog}…${name}に倒され、気を失った。［Z］——直近の街で目を覚ます（ゴールド半分）`;
     } else {
       this.log = `${actionLog}／${react}`;
     }
@@ -241,6 +272,7 @@ export class BattleScene extends Phaser.Scene {
     playSfx('win');
     const e = this.enemyDef;
     if (this.enemyId === 'boss') game.flags['boss-cleared'] = true; // 番獣撃破→里へ帰りガロへ報告（覚醒前フロー）
+    if (this.winFlag) game.flags[this.winFlag] = true;              // 任意ボス等＝撃破フラグ（再戦防止）
     game.gold += e.gold;
     const stone = rollStone(makeRng(game.xp * 131 + e.hp + game.gold + this.cs.turn), e.pool);
     addStone(stone);
@@ -264,14 +296,14 @@ export class BattleScene extends Phaser.Scene {
     else advance(this);
   }
 
-  private retry(): void {
-    this.cs = this.fresh();
-    game.heroHp = this.cs.hero.hp;
-    game.freeWill = this.cs.hero.freeWill;
-    this.phase = 'root'; this.rootIdx = 0;
+  /** 敗北＝気を失い、直近の街で目覚める（ゴールド半分・全回復）。詰み防止＝街に戻れば必ず立て直せる。 */
+  private faint(): void {
     playSfx('confirm');
-    this.log = `${this.intro}（やり直し）`;
-    this.render();
+    const dest = faintReturnToTown(); // ゴールド半分・HP/自由意志 全回復
+    // フロー戦闘（番獣/盤戦）で倒れたら、直前の field beat（＝街）へフローを巻き戻す＝再挑戦できる。
+    if (this.mode === 'flow') rewindToLastField();
+    fieldResume.active = false; // 遭遇地点ではなく街から再開
+    transitionTo(this, 'Field', { mapId: dest.mapId, sx: dest.sx, sy: dest.sy });
   }
 
   // ——— 描画 ———
@@ -282,14 +314,14 @@ export class BattleScene extends Phaser.Scene {
 
     // 敵トークン＋HPバー。
     const ehp = c.enemy.hp / c.enemy.maxHp;
-    if (c.enemy.charging) { // ためている予兆＝黄色い警告リング
-      g.lineStyle(4, 0xffd54f, 0.9).strokeCircle(EX, EY, 62);
-      g.lineStyle(2, 0xffd54f, 0.5).strokeCircle(EX, EY, 72);
+    if (c.enemy.charging) { // ためている予兆＝黄色い警告リング（魔物ドット絵を囲う）
+      g.lineStyle(4, 0xffd54f, 0.9).strokeCircle(EX, EY, 80);
+      g.lineStyle(2, 0xffd54f, 0.5).strokeCircle(EX, EY, 92);
     }
-    g.fillStyle(this.color, 1).fillCircle(EX, EY, 48);
-    g.lineStyle(3, 0xff5a6e, 0.9).strokeCircle(EX, EY, 48);
-    g.fillStyle(0x2a1620, 1).fillRect(EX - 180, EY + 68, 360, 16);
-    g.fillStyle(0xff5a6e, 1).fillRect(EX - 180, EY + 68, 360 * ehp, 16);
+    // 魔物の足元の影＋HPバー（敵スプライト本体は this.enemyImg）。
+    g.fillStyle(0x000000, 0.28).fillEllipse(EX, EY + 64, 96, 22);
+    g.fillStyle(0x2a1620, 1).fillRect(EX - 180, EY + 78, 360, 16);
+    g.fillStyle(0xff5a6e, 1).fillRect(EX - 180, EY + 78, 360 * ehp, 16);
 
     const atkAttrStr = c.enemy.atkAttr !== 'physical' ? ` 攻撃:${ATTR_LABEL[c.enemy.atkAttr]}` : '';
     const multiStr = c.enemy.multi > 1 ? ` ×${c.enemy.multi}連撃` : '';

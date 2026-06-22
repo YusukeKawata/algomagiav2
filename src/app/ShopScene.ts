@@ -26,7 +26,7 @@ export class ShopScene extends Phaser.Scene {
     this.mode = 'buy'; this.idx = 0; this.msg = this.shop.greeting;
     this.add.rectangle(0, 0, CANVAS_W, CANVAS_H, 0x05060d, 0.85).setOrigin(0);
     this.head = this.add.text(60, 40, '', { fontFamily: 'monospace', fontSize: '22px', color: COLORS.text });
-    this.body = this.add.text(60, 110, '', { fontFamily: 'monospace', fontSize: '19px', color: COLORS.text, lineSpacing: 9 });
+    this.body = this.add.text(60, 110, '', { fontFamily: 'monospace', fontSize: '19px', color: COLORS.text, lineSpacing: 9, wordWrap: { width: CANVAS_W - 120 } });
     this.input.keyboard?.on('keydown', (e: KeyboardEvent) => this.onKey(e.key));
     this.render();
   }
@@ -115,11 +115,18 @@ export class ShopScene extends Phaser.Scene {
     const list = this.rows();
     const lines: string[] = [];
     if (list.length === 0) lines.push(this.mode === 'buy' ? '取り扱いがない。' : '売れる物がない。');
-    list.forEach((r, i) => {
+    // 魔石を大量に売る時など、リストが画面外へ流れないようカーソルが必ず見える窓に切る。
+    const MAX = 16;
+    let from = 0, to = list.length;
+    if (list.length > MAX) { from = Math.max(0, Math.min(this.idx - Math.floor(MAX / 2), list.length - MAX)); to = from + MAX; }
+    if (from > 0) lines.push('  ▲ （上に続く）');
+    list.slice(from, to).forEach((r, j) => {
+      const i = from + j;
       const cur = i === this.idx ? '▶' : ' ';
       const own = r.owned ? ' (所持)' : '';
       lines.push(`${cur}${r.label.padEnd(20, '　')} ${r.price}G${own}`);
     });
+    if (to < list.length) lines.push('  ▼ （下に続く）');
     lines.push('', this.msg);
     this.body.setText(lines);
   }

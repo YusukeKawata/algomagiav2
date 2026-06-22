@@ -32,14 +32,18 @@ export interface CombatState {
   turn: number;
 }
 
-export interface HeroSetup { hpMax: number; freeWillMax: number; atk: number; def: number; resist?: Resist }
+// hp/freeWill を省くと満タンで開始（テスト・autoWinnable＝リトライの全回復モデル）。
+// 指定すると現在値で開始＝戦闘間で消耗を持ち越す（フィールドの遭遇・連戦）。
+export interface HeroSetup { hpMax: number; freeWillMax: number; atk: number; def: number; resist?: Resist; hp?: number; freeWill?: number }
 export interface EnemySetup { name: string; hp: number; atk: number; weakness: Attr; bigEvery?: number; atkAttr?: Attr; bigAttr?: Attr; multi?: number }
 
-/** 戦闘開始（HP/自由意志は満タン＝戦闘開始＝全回復ポリシー）。 */
+/** 戦闘開始。HP/自由意志は既定で満タン（hp/freeWill 指定時はその現在値＝消耗を持ち越す）。 */
 export function startCombat(hero: HeroSetup, enemy: EnemySetup): CombatState {
   const atkAttr = enemy.atkAttr ?? 'physical';
+  const hp = Math.max(0, Math.min(hero.hpMax, hero.hp ?? hero.hpMax));
+  const freeWill = Math.max(0, Math.min(hero.freeWillMax, hero.freeWill ?? hero.freeWillMax));
   return {
-    hero: { hp: hero.hpMax, hpMax: hero.hpMax, freeWill: hero.freeWillMax, freeWillMax: hero.freeWillMax, atk: hero.atk, def: hero.def, resist: hero.resist ?? {}, guarding: false },
+    hero: { hp, hpMax: hero.hpMax, freeWill, freeWillMax: hero.freeWillMax, atk: hero.atk, def: hero.def, resist: hero.resist ?? {}, guarding: false },
     enemy: {
       name: enemy.name, hp: enemy.hp, maxHp: enemy.hp, atk: enemy.atk, weakness: enemy.weakness,
       bigEvery: enemy.bigEvery ?? 0, sinceBig: 0, charging: false,
@@ -75,6 +79,16 @@ export function skillBaseDamage(c: Pick<Circuit, 'stones' | 'strength'>): number
   return c.strength + bonus;
 }
 
+/**
+ * 物理スキルのダメージ＝「こうげき(atk)」に回路の強さを“上乗せ”する（ponti 指示）。
+ *   素の物理こうげき(atk)が基礎で、物理属性スキルはそれに skillBaseDamage ぶん追加するブースト。
+ *   ＝単純なこうげきより弱い物理スキルにはせず、自由意志コストに見合う「攻撃＋α」にする。
+ *   物理は属性弱点を突けない（×2なし）＝弱点を突く元素スキルの活躍余地も残す。
+ */
+export function physicalSkillDamage(atk: number, c: Pick<Circuit, 'stones' | 'strength'>): number {
+  return Math.max(1, atk) + skillBaseDamage(c);
+}
+
 /** 攻撃（武器・物理）。ダメージ＝atk（最低1）。自由意志は使わない。 */
 export function heroAttack(s: CombatState): ActionResult {
   if (s.outcome !== 'none') return { state: s, dealt: 0, weak: false, cost: 0, ok: false };
@@ -84,14 +98,18 @@ export function heroAttack(s: CombatState): ActionResult {
   return { state: { ...s, enemy: { ...s.enemy, hp }, outcome }, dealt, weak: false, cost: 0, ok: true };
 }
 
-/** スキル（魔石盤の回路）。コスト＝石数を自由意志から。弱点なら2倍。不足なら ok=false で不変。 */
+/**
+ * スキル（魔石盤の回路）。コスト＝石数を自由意志から。不足なら ok=false で不変。
+ *   物理属性＝こうげき(atk)に強さを上乗せ（physicalSkillDamage・弱点×2なし）。
+ *   元素属性＝強さ＋長回路ボーナス、弱点なら2倍（育った長回路がこうげきを上回る）。
+ */
 export function heroSkill(s: CombatState, c: Pick<Circuit, 'stones' | 'strength' | 'element'>): ActionResult {
   if (s.outcome !== 'none') return { state: s, dealt: 0, weak: false, cost: 0, ok: false };
   const cost = circuitCost(c);
   if (s.hero.freeWill < cost) return { state: s, dealt: 0, weak: false, cost, ok: false, note: 'not-enough' };
-  const weak = c.element === s.enemy.weakness;
-  const base = skillBaseDamage(c);
-  const dealt = weak ? base * 2 : base;
+  const physical = c.element === 'physical';
+  const weak = !physical && c.element === s.enemy.weakness;
+  const dealt = physical ? physicalSkillDamage(s.hero.atk, c) : (weak ? skillBaseDamage(c) * 2 : skillBaseDamage(c));
   const hp = Math.max(0, s.enemy.hp - dealt);
   const freeWill = s.hero.freeWill - cost;
   const outcome: Outcome = hp <= 0 ? 'win' : 'none';

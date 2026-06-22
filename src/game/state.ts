@@ -27,8 +27,13 @@ export interface GameState {
   boardCap: number;       // 盤の各辺の上限（第1幕=3／第2幕の工房で4へ引き上げ）
   board: Board;           // 装備中の魔石盤（駒配置を保持＝戦闘外で編集し戦闘で使う）
   skillUnlocked: boolean; // 据炉での覚醒で true（盤＝スキルが使える）
+  lastTownMapId: string;  // 直近に訪れた街（敗北時の帰還先＝'village'|'underville'）
+  codex: CodexEntry[];    // 記録帳＝調べた事・訪れた土地の記憶（読み返せる＝“読むRPG”の収集要素）
   flags: Record<string, boolean>;
 }
+
+// 記録帳の1項目（調べた物・土地の記憶）。discovery 順に並ぶ。
+export interface CodexEntry { id: string; title: string; lines: string[] }
 
 export const game: GameState = makeFresh();
 
@@ -54,8 +59,43 @@ function makeFresh(): GameState {
     boardCap: 3,            // 第1幕は 3×3 が上限（第2幕の工房で 4 へ）
     board: emptyBoard(1, 1),
     skillUnlocked: false,
+    lastTownMapId: 'village',
+    codex: [],
     flags: {},
   };
+}
+
+/** 記録帳に1項目を加える（同じ id は一度だけ）。新規追加なら true（「記録した」演出用）。 */
+export function recordLore(id: string, title: string, lines: string[]): boolean {
+  if (game.codex.some((e) => e.id === id)) return false;
+  game.codex.push({ id, title, lines });
+  return true;
+}
+
+// ——— 敗北時の街への帰還（ponti 指示：死んだら直近の街へ・ゴールド半分・全回復） ———
+
+/** 街マップの帰還スポーン座標（床であること＝maps.test が exits で担保している床に合わせる）。 */
+export const TOWN_SPAWN: Record<string, { sx: number; sy: number }> = {
+  village: { sx: 18, sy: 17 },   // 村の中央（開始位置P付近）
+  underville: { sx: 2, sy: 7 },  // 坑道からの入口（床）
+};
+
+/** 街フィールドに入ったら帰還先を記録（FieldScene が呼ぶ）。 */
+export function setLastTown(mapId: string): void {
+  if (mapId === 'village' || mapId === 'underville') game.lastTownMapId = mapId;
+}
+
+/**
+ * 敗北＝気を失って直近の街で目覚める。ゴールド半分（DQ風ペナルティ）・HP/自由意志は全回復。
+ * 経験値/魔石/装備は保持＝街に戻れば必ず立て直せる（詰み防止の不変条件は維持）。帰還先を返す。
+ */
+export function faintReturnToTown(): { mapId: string; sx: number; sy: number; lostGold: number } {
+  const lostGold = game.gold - Math.floor(game.gold / 2);
+  game.gold = Math.floor(game.gold / 2);
+  restFull();
+  const mapId = (game.lastTownMapId === 'underville' || game.lastTownMapId === 'village') ? game.lastTownMapId : 'village';
+  const sp = TOWN_SPAWN[mapId] ?? TOWN_SPAWN['village']!;
+  return { mapId, sx: sp.sx, sy: sp.sy, lostGold };
 }
 
 // ——— 派生ステータス（装備込み）。戦闘・ステータス画面が使う単一窓口 ———
@@ -216,22 +256,48 @@ export function consumeItem(id: string): boolean {
 
 /**
  * XP を加算してレベル・ステータスを更新（決定論は core/progress に委譲）。
- * レベルが上がったら hpMax/freeWillMax を伸ばし、HP/自由意志を満タンに戻す（成長の報酬）。
+ * レベルアップで hpMax/freeWillMax は伸びる（増えた上限ぶんだけ現在値も底上げ）が、
+ * 全回復はしない＝HP/自由意志は戦闘間で“消耗”として持ち越す（回復は宿/道具/いやし）。ponti 指示。
  */
 export function grantXp(amount: number): XpResult {
   const r = gainXp({ level: game.level, xp: game.xp }, amount);
   game.level = r.progress.level;
   game.xp = r.progress.xp;
+  const prevHpMax = game.heroHpMax;
+  const prevFwMax = game.freeWillMax;
   const s = statsForLevel(game.level);
   game.heroHpMax = s.hpMax;
   game.freeWillMax = s.freeWillMax;
   if (r.leveledUp) {
-    game.heroHp = maxHp();
-    game.freeWill = game.freeWillMax;
+    // 全快ではなく、上限の増加ぶんだけ現在値を加える（成長の手応えは出すが回復ではない）。
+    game.heroHp = Math.min(maxHp(), game.heroHp + Math.max(0, game.heroHpMax - prevHpMax));
+    game.freeWill = Math.min(game.freeWillMax, game.freeWill + Math.max(0, game.freeWillMax - prevFwMax));
     // 覚醒後は、強くなる（レベルアップ）たびに魔石盤も1段広がる＝戦って盤を育てる。上限は工房で引き上げ。
     if (game.skillUnlocked) { const d = nextBoardDims(game.mind, game.compute, game.boardCap); setBoardSize(d.mind, d.compute); }
   }
+  // 上限が下がることはないが、念のため現在値を上限内にクランプ（装備変更などとの整合）。
+  game.heroHp = Math.min(game.heroHp, maxHp());
+  game.freeWill = Math.min(game.freeWill, game.freeWillMax);
   return r;
+}
+
+/** 休息（宿/ベッド）：HPと自由意志を全回復。フィールドの宿屋・据炉覚醒後などで使う。 */
+export function restFull(): void {
+  game.heroHp = maxHp();
+  game.freeWill = game.freeWillMax;
+}
+
+/**
+ * 覚醒（スキル解禁）時に、それまでに上げたレベルぶん盤を一気に育てる。
+ * 盤はレベルで育つが解禁が遅い（覚醒＝L3-4）ため、解禁時点で1×1だとスロットを選べず窮屈。
+ * 解禁時に“追いつかせる”ことで、最初から数マスを自由に配置できる（ponti 指摘の改善）。
+ */
+export function catchUpBoardToLevel(): void {
+  setBoardSize(1, 1);
+  for (let l = 1; l < game.level; l++) {
+    const d = nextBoardDims(game.mind, game.compute, game.boardCap);
+    setBoardSize(d.mind, d.compute);
+  }
 }
 
 export function resetGame(): void {

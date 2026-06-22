@@ -15,13 +15,14 @@ import { ATTR_COLOR } from '@app/ui/attrs';
 import { levelProgress } from '@core/progress';
 import { playSfx } from '@app/ui/sfx';
 
-const TABS = ['ステータス', 'そうび', '魔石盤', 'どうぐ'] as const;
+const TABS = ['ステータス', 'そうび', '魔石盤', 'どうぐ', '記録'] as const;
 
 export class MenuScene extends Phaser.Scene {
   private tab = 0;
-  private idx = 0;          // 汎用カーソル（そうび/どうぐ）
+  private idx = 0;          // 汎用カーソル（そうび/どうぐ/記録）
   private cx = 0; private cy = 0; // 盤カーソル
   private picking = false; private pickIdx = 0; // 盤：置く魔石を選ぶサブモード
+  private reading = false;  // 記録帳：項目を開いて全文を読むサブモード
   private g!: Phaser.GameObjects.Graphics;
   private head!: Phaser.GameObjects.Text;
   private body!: Phaser.GameObjects.Text;
@@ -37,8 +38,8 @@ export class MenuScene extends Phaser.Scene {
     this.add.rectangle(0, 0, CANVAS_W, CANVAS_H, 0x070a14, 1).setOrigin(0).setDepth(0);
     this.add.rectangle(0, 0, CANVAS_W, CANVAS_H, 0x0d1830, 0.5).setOrigin(0).setDepth(0);
     this.g = this.add.graphics().setDepth(1);
-    this.head = this.add.text(60, 36, '', { fontFamily: 'monospace', fontSize: '22px', color: COLORS.text }).setDepth(2);
-    this.body = this.add.text(60, 96, '', { fontFamily: 'monospace', fontSize: '19px', color: COLORS.text, lineSpacing: 8 }).setDepth(2);
+    this.head = this.add.text(60, 36, '', { fontFamily: 'monospace', fontSize: '20px', color: COLORS.text, wordWrap: { width: CANVAS_W - 110 } }).setDepth(2);
+    this.body = this.add.text(60, 96, '', { fontFamily: 'monospace', fontSize: '19px', color: COLORS.text, lineSpacing: 8, wordWrap: { width: CANVAS_W - 120 } }).setDepth(2);
     this.boardLabels = this.add.container(0, 0).setDepth(3);
     this.input.keyboard?.on('keydown', (e: KeyboardEvent) => this.onKey(e.key));
     this.render();
@@ -46,17 +47,29 @@ export class MenuScene extends Phaser.Scene {
 
   private close(): void { playSfx('cancel'); this.scene.stop(); this.scene.resume('Field'); }
 
+  /** 長いリストを「カーソルが必ず見える窓」に切り出す（画面外へ流れて固まって見えるのを防ぐ）。 */
+  private windowRange(len: number, idx: number, max: number): { from: number; to: number } {
+    if (len <= max) return { from: 0, to: len };
+    let from = idx - Math.floor(max / 2);
+    from = Math.max(0, Math.min(from, len - max));
+    return { from, to: from + max };
+  }
+
   private onKey(key: string): void {
     const k = key.toLowerCase();
     if (this.picking) { this.pickKey(key, k); return; }
     if (k === 'c' || k === 'x' || key === 'Escape') { this.close(); return; }
-    if (key === 'ArrowLeft') { this.tab = (this.tab + TABS.length - 1) % TABS.length; this.idx = 0; this.msg = ''; playSfx('move'); this.render(); return; }
-    if (key === 'ArrowRight') { this.tab = (this.tab + 1) % TABS.length; this.idx = 0; this.msg = ''; playSfx('move'); this.render(); return; }
+    // タブ切替は [Q/E]（[←→] は魔石盤のカーソル＝スロットを自由に選ぶために空ける。以前は←→がタブを奪っていた）。
+    if (k === 'q' || k === 'e') {
+      this.tab = (this.tab + (k === 'e' ? 1 : TABS.length - 1)) % TABS.length;
+      this.idx = 0; this.cx = 0; this.cy = 0; this.msg = ''; this.reading = false; playSfx('move'); this.render(); return;
+    }
 
     if (this.tab === 1) this.equipKey(key);
-    else if (this.tab === 2) this.boardKey(key);
+    else if (this.tab === 2) this.boardKey(key);   // ←→↑↓ すべて盤カーソルに使える
     else if (this.tab === 3) this.itemKey(key, k);
-    else { if (key === 'ArrowUp' || key === 'ArrowDown') { playSfx('move'); this.render(); } }
+    else if (this.tab === 4) this.codexKey(key, k);
+    else if (key === 'ArrowUp' || key === 'ArrowDown') { playSfx('move'); this.render(); }
   }
 
   // ——— そうび ———
@@ -127,15 +140,45 @@ export class MenuScene extends Phaser.Scene {
     }
   }
 
+  // ——— 記録帳（調べた事・訪れた土地を読み返す） ———
+  private codexKey(key: string, k: string): void {
+    const list = game.codex;
+    if (this.reading) { // 全文を読んでいる＝戻るだけ
+      if (k === 'z' || k === 'x' || key === 'Enter' || key === 'Escape' || key === 'Backspace') { this.reading = false; playSfx('cancel'); this.render(); }
+      return;
+    }
+    if (list.length === 0) return;
+    if (key === 'ArrowUp') { this.idx = (this.idx + list.length - 1) % list.length; playSfx('move'); this.render(); }
+    else if (key === 'ArrowDown') { this.idx = (this.idx + 1) % list.length; playSfx('move'); this.render(); }
+    else if (k === 'z' || key === 'Enter') { this.reading = true; playSfx('confirm'); this.render(); }
+  }
+
+  private renderCodex(): void {
+    const list = game.codex;
+    if (list.length === 0) { this.body.setText(['記録帳', '', '  まだ何も記録されていない。', '  フィールドで [Z] 調べる／新しい土地に着くと、ここに残っていく。']); return; }
+    if (this.reading) {
+      const e = list[Math.min(this.idx, list.length - 1)]!;
+      this.body.setText([`【記録帳】${e.title}`, '', ...e.lines, '', '[Z/X] 一覧へ戻る']);
+      return;
+    }
+    const lines = [`記録帳  [↑↓]選んで [Z]読む （調べた事・訪れた土地 ${list.length}件）`, ''];
+    const { from, to } = this.windowRange(list.length, this.idx, 18);
+    if (from > 0) lines.push('  ▲ （上に続く）');
+    list.slice(from, to).forEach((e, j) => lines.push(`${from + j === this.idx ? '▶' : ' '}${e.title}`));
+    if (to < list.length) lines.push('  ▼ （下に続く）');
+    this.body.setText(lines);
+  }
+
   // ——— 描画 ———
   private render(): void {
     this.g.clear();
     this.boardLabels.removeAll(true);
-    this.head.setText(TABS.map((t, i) => (i === this.tab ? `【${t}】` : ` ${t} `)).join('  ') + '    [←→]タブ [C/X]閉じる');
+    this.head.setText(TABS.map((t, i) => (i === this.tab ? `【${t}】` : ` ${t} `)).join('  ') + '    [Q/E]タブ切替 [←→↑↓]カーソル [C/X]閉じる');
     if (this.tab === 0) this.renderStatus();
     else if (this.tab === 1) this.renderEquip();
     else if (this.tab === 2) this.renderBoard();
-    else this.renderItems();
+    else if (this.tab === 3) this.renderItems();
+    else this.renderCodex();
   }
 
   private renderStatus(): void {
@@ -161,7 +204,10 @@ export class MenuScene extends Phaser.Scene {
   private renderEquip(): void {
     const list = this.equipEntries();
     const lines = ['武器・防具を選んで [Z] で装備。', ''];
-    list.forEach((e, i) => {
+    const { from, to } = this.windowRange(list.length, this.idx, 16);
+    if (from > 0) lines.push('  ▲ （上に続く）');
+    list.slice(from, to).forEach((e, j) => {
+      const i = from + j;
       const sel = i === this.idx ? '▶' : ' ';
       if (e.kind === 'w') {
         const w = WEAPONS[e.id]!;
@@ -171,6 +217,7 @@ export class MenuScene extends Phaser.Scene {
         lines.push(`${sel}[防具] ${a.name.padEnd(8, '　')} 防+${a.def} HP+${a.hpBonus}${game.armorId === e.id ? ' (装備中)' : ''}`);
       }
     });
+    if (to < list.length) lines.push('  ▼ （下に続く）');
     lines.push('', this.msg);
     this.body.setText(lines);
   }
@@ -207,8 +254,12 @@ export class MenuScene extends Phaser.Scene {
     let ry = oy - 4;
     const addL = (t: string, color: string = COLORS.text): void => { this.boardLabels.add(this.add.text(rx, ry, t, { fontFamily: 'monospace', fontSize: '17px', color }).setDepth(3)); ry += 24; };
     if (this.picking) {
-      addL('嵌める魔石を選ぶ [Z]決定 [X]戻る', '#ffe27a');
-      freeStones().forEach((s, i) => addL(`${i === this.pickIdx ? '▶' : ' '}${stoneLabel(s)}`, i === this.pickIdx ? '#ffffff' : COLORS.dim));
+      const free = freeStones();
+      addL(`嵌める魔石を選ぶ [Z]決定 [X]戻る  （${free.length}個）`, '#ffe27a');
+      const { from, to } = this.windowRange(free.length, this.pickIdx, 14); // カーソルが必ず見える窓に切る
+      if (from > 0) addL('  ▲ （上に続く）', COLORS.dim);
+      free.slice(from, to).forEach((s, j) => { const i = from + j; addL(`${i === this.pickIdx ? '▶' : ' '}${stoneLabel(s)}`, i === this.pickIdx ? '#ffffff' : COLORS.dim); });
+      if (to < free.length) addL('  ▼ （下に続く）', COLORS.dim);
     } else {
       addL(`心域 ${b.width} × 演算 ${b.height}`);
       addL(`撃てるスキル: ${boardCircuits().length} 本`);
