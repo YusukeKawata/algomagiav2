@@ -32,7 +32,7 @@ const MON_SHAPE: Record<string, MonsterShape> = {
 };
 const HERO_PAL = heroPalette(0x3a6ea5, { hair: 0x4a3220 });
 type Phase = 'root' | 'skill' | 'item' | 'win' | 'lose';
-interface Cmd { key: 'attack' | 'skill' | 'item' | 'guard'; label: string }
+interface Cmd { key: 'attack' | 'skill' | 'item' | 'guard' | 'flee'; label: string }
 // 回復魔法は専用コマンドを廃止＝回復属性石の回路を「スキル」から撃つと回復する（§8.9・回路化）。
 const ROOT_BASE: Cmd[] = [
   { key: 'attack', label: 'こうげき' },
@@ -40,6 +40,7 @@ const ROOT_BASE: Cmd[] = [
   { key: 'item', label: 'どうぐ' },
   { key: 'guard', label: 'みやぶる' },
 ];
+const FLEE_CMD: Cmd = { key: 'flee', label: 'にげる' };
 
 export class BattleScene extends Phaser.Scene {
   private mode: 'flow' | 'encounter' = 'flow';
@@ -123,8 +124,12 @@ export class BattleScene extends Phaser.Scene {
     );
   }
 
-  /** 現在のルートコマンド（こうげき/スキル/どうぐ/みやぶる。回復は回復属性石の回路＝「スキル」から撃つ）。 */
-  private root(): Cmd[] { return ROOT_BASE; }
+  /** 現在のルートコマンド（こうげき/スキル/どうぐ/みやぶる。回復は回復属性石の回路＝「スキル」から撃つ）。
+   *  覚醒後のフィールド遭遇のみ「にげる」を足す＝旅路のトラッシュ戦をスキップできる（詰み防止のため
+   *  覚醒前/フロー戦＝ボス では出さない＝ボス前のレベリングを温存）。 */
+  private root(): Cmd[] {
+    return (this.mode === 'encounter' && game.skillUnlocked) ? [...ROOT_BASE, FLEE_CMD] : ROOT_BASE;
+  }
 
   private circuits(): Circuit[] { return boardCircuits(); }
   private ownedItems(): { id: string; name: string; count: number }[] {
@@ -157,6 +162,7 @@ export class BattleScene extends Phaser.Scene {
       const cmd = this.root()[this.rootIdx]!;
       if (cmd.key === 'attack') { this.doAttack(); return; }
       if (cmd.key === 'guard') { this.doGuard(); return; }
+      if (cmd.key === 'flee') { this.doFlee(); return; }
       if (cmd.key === 'skill') {
         if (!game.skillUnlocked) { this.log = 'まだスキルは使えない（覚醒前）。'; playSfx('cancel'); this.render(); return; }
         if (this.circuits().length === 0) { this.log = '撃てる回路がない。魔石盤に魔石を嵌めよう。'; playSfx('cancel'); this.render(); return; }
@@ -186,6 +192,25 @@ export class BattleScene extends Phaser.Scene {
     this.cs = r.state;
     playSfx('confirm');
     this.afterHero('みやぶる。…敵の動きを読む（次の攻撃を大きく軽減）。');
+  }
+
+  /**
+   * にげる（覚醒後のフィールド遭遇のみ）。旅路のトラッシュ戦をスキップ＝グラインド疲れの救済。
+   *   成功＝報酬なしでフィールドへ復帰（経験/魔石/金は得られない＝逃げ得にしない自然な抑制）。
+   *   失敗＝敵に手番を渡す（隙を突かれる）。決定論シード＝リトライで同じ結果（理不尽な乱数にしない）。
+   *   ※ フロー戦（ボス）と覚醒前では root() に出ないので、ボス前のレベリングは温存＝詰み防止は不変。
+   */
+  private doFlee(): void {
+    const r = makeRng(this.cs.turn * 37 + this.cs.enemy.hp * 7 + this.cs.hero.hp * 13 + 5);
+    if (r() < 0.75) {
+      playSfx('cancel');
+      this.log = 'すばやく間合いを切って、その場を離れた。';
+      this.render();
+      this.time.delayedCall(280, () => { fieldResume.active = true; transitionTo(this, 'Field', { resume: true }); });
+      return;
+    }
+    // 逃げ損なった＝敵の手番（隙を突かれる）。afterHero と同じ被弾処理を通す。
+    this.afterHero('逃げ損なった——！');
   }
 
   private doSkill(): void {
