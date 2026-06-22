@@ -57,6 +57,7 @@ export class BattleScene extends Phaser.Scene {
   private text!: Phaser.GameObjects.Text;
   private menu!: Phaser.GameObjects.Text;
   private rewarded = false;
+  private fleeing = false;    // にげる成功の演出中＝以後の入力を無視（遷移待ちの隙の誤操作を防ぐ）
   private winFlag?: string;   // 任意ボス等＝撃破時に立てる flag（再戦防止）
   private enemyImg!: Phaser.GameObjects.Image; // 魔物のドット絵
   private heroImg!: Phaser.GameObjects.Image;  // 主人公のドット絵（左下・右向き）
@@ -86,6 +87,7 @@ export class BattleScene extends Phaser.Scene {
     this.phase = 'root';
     this.rootIdx = 0;
     this.rewarded = false;
+    this.fleeing = false;
 
     paintScene(this, game.skillUnlocked ? 'board' : 'phys');
     startBgm('battle');
@@ -137,6 +139,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private onKey(key: string): void {
+    if (this.fleeing) return; // にげる成功の演出中＝遷移待ちの隙の誤操作を無視
     const k = key.toLowerCase();
     if (this.phase === 'win') { if (k === 'z' || k === 'enter') this.finishWin(); return; }
     if (this.phase === 'lose') { if (k === 'z' || k === 'enter') this.faint(); return; }
@@ -203,6 +206,7 @@ export class BattleScene extends Phaser.Scene {
   private doFlee(): void {
     const r = makeRng(this.cs.turn * 37 + this.cs.enemy.hp * 7 + this.cs.hero.hp * 13 + 5);
     if (r() < 0.75) {
+      this.fleeing = true;
       playSfx('cancel');
       this.log = 'すばやく間合いを切って、その場を離れた。';
       this.render();
