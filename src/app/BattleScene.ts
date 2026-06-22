@@ -12,7 +12,7 @@ import { makeRng } from '@core/rng';
 import type { Circuit } from '@core/board';
 import { ATTR_LABEL } from '@core/board';
 import {
-  startCombat, heroAttack, heroSkill, heroGuard, heroHealHp, heroHealFw, enemyTurn, circuitCost, skillBaseDamage,
+  startCombat, heroAttack, heroSkill, heroGuard, heroHealHp, heroHealFw, heroCounter, enemyTurn, circuitCost, skillBaseDamage,
   type CombatState,
 } from '@core/combat';
 import { fadeInOnCreate, addMuteToggle, transitionTo, popupNumber, flash, shake } from '@app/ui/fx';
@@ -257,6 +257,18 @@ export class BattleScene extends Phaser.Scene {
     if (e.telegraph) { react = `${name}は力をためている…！ 次は${attrName ? attrName : ''}大攻撃だ——[みやぶる]で受け流せ。`; playSfx('confirm'); }
     else if (e.big) { react = e.guarded ? `${name}の${attrName}大攻撃を看破！ 受け流した（${e.dealt}）。` : `${name}の${attrName}大攻撃！ ${e.dealt}ダメージ。`; playSfx(e.guarded ? 'weak' : 'hurt'); }
     else { react = `${name}の${attrName}${hitsStr}攻撃 ${e.guarded ? `${e.dealt}（看破！）` : e.dealt}`; playSfx('hurt'); }
+
+    // 看破からの反撃＝大攻撃を読み切って受け流した“隙”に一撃を入れる（予測防御の payoff＝テーマ）。
+    //   core/combat の heroCounter（autoWinnable は使わない＝詰み判定の下限は不変・反撃は熟練への上乗せ）。
+    if (e.big && e.guarded && this.cs.outcome === 'none') {
+      const cr = heroCounter(this.cs);
+      this.cs = cr.state;
+      playSfx('hit');
+      popupNumber(this, EX, EY - 30, `${cr.dealt}`, { color: '#9ed0ff', big: true });
+      flash(this, 0x9ed0ff, 130);
+      react += `／読み切った——反撃 ${cr.dealt}ダメージ！`;
+      if (this.cs.outcome === 'win') { this.onWin(`${actionLog}／${react}`); return; }
+    }
 
     if (this.cs.outcome === 'lose') {
       playSfx('lose');
