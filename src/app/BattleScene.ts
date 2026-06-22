@@ -4,7 +4,7 @@
 import Phaser from 'phaser';
 import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
 import { currentBeat, advance, rewindToLastField } from '@game/flow';
-import { game, grantXp, addStone, maxHp, heroAtk, heroDef, heroResist, boardCircuits, consumeItem, itemCount, faintReturnToTown, fieldResume } from '@game/state';
+import { game, grantXp, addStone, maxHp, heroAtk, heroDef, heroResist, boardCircuits, consumeItem, itemCount, faintReturnToTown, fieldResume, recordLore } from '@game/state';
 import { ENEMIES, ENEMY_FLAVOR, type Enemy } from '@game/data/enemies';
 import { ITEMS } from '@game/data/items';
 import { rollStone, stoneLabel } from '@game/data/stones';
@@ -319,8 +319,10 @@ export class BattleScene extends Phaser.Scene {
     game.heroHp = this.cs.hero.hp;
     game.freeWill = this.cs.hero.freeWill;
     const xr = grantXp(e.xp);
+    const newFoe = this.recordBestiary();   // 撃破した魔物を図鑑（記録帳）へ＝“読むRPG”の収集payoff（初撃破のみ）
     this.phase = 'win';
     let line = `${actionLog} ${e.name}を倒した！ G+${e.gold}・魔石「${stoneLabel(stone)}」・経験+${e.xp}。`;
+    if (newFoe) line += '（魔物を記録帳に記した）';
     if (xr.leveledUp) {
       popupNumber(this, CANVAS_W / 2, EY + 80, `LEVEL UP! Lv.${xr.to}`, { color: '#ffe27a', big: true });
       line += `★レベルアップ Lv.${xr.from}→${xr.to}！`;
@@ -328,6 +330,20 @@ export class BattleScene extends Phaser.Scene {
     line += this.mode === 'encounter' ? '［Z］で戻る' : '［Z］で進む';
     this.log = line;
     this.render();
+  }
+
+  /** 撃破した魔物を図鑑（記録帳）に登録＝弱点・攻撃属性・癖を読み返せる。初撃破のみ true。 */
+  private recordBestiary(): boolean {
+    const e = this.enemyDef;
+    const traits: string[] = [];
+    if (e.atkAttr && e.atkAttr !== 'physical') traits.push(`${ATTR_LABEL[e.atkAttr]}属性の攻撃を使う`);
+    else traits.push('物理で攻めてくる');
+    if (e.multi && e.multi > 1) traits.push(`${e.multi}連撃を仕掛ける`);
+    if (e.bigEvery) traits.push('「ためる」予兆から大攻撃を放つ（みやぶる→反撃が効く）');
+    return recordLore(`bestiary:${this.enemyId}`, `【魔物】${e.name}`, [
+      ENEMY_FLAVOR[this.enemyId] ?? `${e.name}。歌や伝聞に名の残る魔物。`,
+      `弱点＝${ATTR_LABEL[e.weakness]}。${traits.join('。')}。`,
+    ]);
   }
 
   private finishWin(): void {
