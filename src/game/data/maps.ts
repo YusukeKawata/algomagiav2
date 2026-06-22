@@ -8,7 +8,7 @@ import { makeRng } from '@core/rng';
 
 export interface MapExit { to: string; sx: number; sy: number }
 
-export type NpcKind = 'villager' | 'garo' | 'nina' | 'shopItem' | 'shopWeapon' | 'shopArmor' | 'underElder' | 'maker' | 'inn';
+export type NpcKind = 'villager' | 'garo' | 'nina' | 'shopItem' | 'shopWeapon' | 'shopArmor' | 'underElder' | 'maker' | 'inn' | 'merchant';
 export interface NpcDef { x: number; y: number; kind: NpcKind; name?: string; color?: number; lines?: string[] }
 
 export interface ExamineDef { x: number; y: number; who?: string; title?: string; lines: string[]; give?: { gold?: number; pool?: string; xp: number; flag: string } }
@@ -360,9 +360,13 @@ export const MAPS: Record<string, FieldMap> = {
   barrens: {
     id: 'barrens',
     rows: withBiome(genCave(46, 30, 8822, [
-      { x: 1, y: 15, ch: 'w' }, { x: 2, y: 15 }, { x: 10, y: 9, ch: 'T' }, { x: 18, y: 20 }, { x: 22, y: 16 }, { x: 26, y: 12 },
+      { x: 1, y: 15, ch: 'w' }, { x: 2, y: 15 }, { x: 10, y: 9, ch: 'T' }, { x: 18, y: 20 }, { x: 22, y: 16 }, { x: 24, y: 16 }, { x: 26, y: 12 },
       { x: 34, y: 22, ch: 'T' }, { x: 40, y: 10 }, { x: 43, y: 14, ch: 'e' },
     ], 0.42), 0, [[14, 6], [15, 6], [28, 25], [29, 25], [38, 5]]),
+    npcs: [
+      // 旅の行商人（荒野の廃墟で店を開く）。道中の補給＝回復薬・魔石の買い取り＝街が遠い旅の救済。
+      { x: 24, y: 16, kind: 'merchant', name: '旅の行商人', color: 0xd8b86a },
+    ],
     camps: [
       { x: 22, y: 16, name: '廃墟の野営地', first: [
         '崩れた壁の影に火を入れる。かつて、ここで誰かが暮らし、同じように火を囲んだのだろうか。',

@@ -421,6 +421,7 @@ export class FieldScene extends Phaser.Scene {
       case 'underElder': this.talkUnderElder(); return;
       case 'maker': this.talkMaker(); return;
       case 'inn': this.talkInn(npc.name ?? '宿屋'); return;
+      case 'merchant': this.talkMerchant(); return;
       default: this.openTalk(npc.name ?? '', npc.lines ?? ['…。']); return;
     }
   }
@@ -463,6 +464,20 @@ export class FieldScene extends Phaser.Scene {
       this.updateHud();
       this.openTalk(who, [`——ぐっすり眠った。HPと自由意志が満ちている。（-${fee}G）`]);
     });
+  }
+
+  /** 旅の行商人（荒野の廃墟で店を開く）。初回は一言交わしてから店（道中の補給）を開く。 */
+  private talkMerchant(): void {
+    if (!game.flags['met-merchant']) {
+      game.flags['met-merchant'] = true;
+      this.openTalk('旅の行商人', [
+        'おっと、驚かせたかい。…こんな滅んだ街の跡で店を開くのは、私くらいのものさ。',
+        '物好きと笑うがいい。だが——人が通らない道にこそ、薬のいる旅人が通る。違うかね。',
+        '回復薬は揃えてある。重たい魔石は買い取るよ。…さあ、何が入り用だい。',
+      ], () => this.openShop('road'));
+      return;
+    }
+    this.openShop('road');
   }
 
   private talkElder(): void {
