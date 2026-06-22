@@ -163,7 +163,13 @@ export class MenuScene extends Phaser.Scene {
     if (list.length === 0) { this.body.setText(['記録帳', '', '  まだ何も記録されていない。', '  フィールドで [Z] 調べる／新しい土地に着くと、ここに残っていく。']); return; }
     if (this.reading) {
       const e = list[Math.min(this.idx, list.length - 1)]!;
-      this.body.setText([`【記録帳】${e.title}`, '', ...e.lines, '', '[Z/X] 一覧へ戻る']);
+      const extra: string[] = [];
+      // 魔物図鑑なら討伐数を添える（読むRPGの戦績＝収集の深み）。
+      if (e.id.startsWith('bestiary:')) {
+        const n = game.kills[e.id.slice('bestiary:'.length)] ?? 0;
+        extra.push('', `討伐数 ${n} 体`);
+      }
+      this.body.setText([`【記録帳】${e.title}`, '', ...e.lines, ...extra, '', '[Z/X] 一覧へ戻る']);
       return;
     }
     // 分類カウンタ＝何がどれだけ集まったか一目で（収集の手応え）。

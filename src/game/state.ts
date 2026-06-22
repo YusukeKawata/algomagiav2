@@ -33,6 +33,7 @@ export interface GameState {
   computeUnlocked: boolean; // 演算＝縦拡張＝並列度の解禁（並列の町・第2幕後半）
   lastTownMapId: string;  // 直近に訪れた街（敗北時の帰還先＝'village'|'underville'）
   codex: CodexEntry[];    // 記録帳＝調べた事・訪れた土地の記憶（読み返せる＝“読むRPG”の収集要素）
+  kills: Record<string, number>; // 魔物図鑑の討伐数（enemyId→撃破回数）。save は game 全体を保存＝自動で含まれる
   flags: Record<string, boolean>;
 }
 
@@ -67,8 +68,15 @@ function makeFresh(): GameState {
     computeUnlocked: false,
     lastTownMapId: 'village',
     codex: [],
+    kills: {},
     flags: {},
   };
+}
+
+/** 魔物を1体撃破＝図鑑の討伐数を+1（enemyId）。撃破後の累計を返す。 */
+export function recordKill(enemyId: string): number {
+  game.kills[enemyId] = (game.kills[enemyId] ?? 0) + 1;
+  return game.kills[enemyId]!;
 }
 
 /** 記録帳に1項目を加える（同じ id は一度だけ）。新規追加なら true（「記録した」演出用）。 */

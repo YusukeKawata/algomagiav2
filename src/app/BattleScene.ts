@@ -4,7 +4,7 @@
 import Phaser from 'phaser';
 import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
 import { currentBeat, advance, rewindToLastField } from '@game/flow';
-import { game, grantXp, addStone, maxHp, heroAtk, heroDef, heroResist, boardCircuits, consumeItem, itemCount, faintReturnToTown, fieldResume, recordLore } from '@game/state';
+import { game, grantXp, addStone, maxHp, heroAtk, heroDef, heroResist, boardCircuits, consumeItem, itemCount, faintReturnToTown, fieldResume, recordLore, recordKill } from '@game/state';
 import { ENEMIES, ENEMY_FLAVOR, type Enemy } from '@game/data/enemies';
 import { ITEMS } from '@game/data/items';
 import { rollStone, stoneLabel } from '@game/data/stones';
@@ -323,6 +323,7 @@ export class BattleScene extends Phaser.Scene {
     game.heroHp = this.cs.hero.hp;
     game.freeWill = this.cs.hero.freeWill;
     const xr = grantXp(e.xp);
+    recordKill(this.enemyId);                // 図鑑の討伐数を+1（読むとき累計を表示）
     const newFoe = this.recordBestiary();   // 撃破した魔物を図鑑（記録帳）へ＝“読むRPG”の収集payoff（初撃破のみ）
     this.phase = 'win';
     let line = `${actionLog} ${e.name}を倒した！ G+${e.gold}・魔石「${stoneLabel(stone)}」・経験+${e.xp}。`;
