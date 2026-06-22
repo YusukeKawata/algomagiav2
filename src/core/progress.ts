@@ -8,9 +8,9 @@ export interface Stats { hpMax: number; power: number; freeWillMax: number }
 
 export const MAX_LEVEL = 20;
 
-/** level→level+1 に必要な XP（手書き曲線：序盤は1〜2戦で上がる）。 */
+/** level→level+1 に必要な XP（手書き曲線：1レベルに数戦かかる＝1戦の重みを出す・中の上）。 */
 export function xpStep(level: number): number {
-  return 6 + (level - 1) * 6; // L1→2:6, L2→3:12, L3→4:18 ...
+  return 10 + (level - 1) * 12; // L1→2:10, L2→3:22, L3→4:34, L4→5:46 …（敵XPは控えめ＝enemies.ts）
 }
 
 /** レベル L に到達するための累計 XP。 */

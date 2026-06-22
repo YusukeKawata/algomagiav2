@@ -6,11 +6,15 @@ import { maybeAutosave } from '@game/save';
 import { transitionTo } from '@app/ui/fx';
 
 let idx = 0;
+let lastFieldIdx = 0; // 直近に通った field beat（敗北→直近の街へ戻すときの巻き戻し先）
 
-export function startFlow(): void { idx = 0; }
+export function startFlow(): void { idx = 0; lastFieldIdx = 0; }
 export function setFlowIndex(i: number): void { idx = i; }
 export function flowIndex(): number { return idx; }
 export function currentBeat(): Beat | undefined { return ACT1[idx]; }
+
+/** フロー戦闘で敗北したとき、直前の field beat（＝自由移動できた街/フィールド）へ巻き戻す。 */
+export function rewindToLastField(): void { idx = lastFieldIdx; }
 
 /** 現在の beat に対応するシーンへ（フェード遷移で統一）。 */
 export function route(scene: Phaser.Scene): void {
@@ -22,6 +26,7 @@ export function route(scene: Phaser.Scene): void {
       transitionTo(scene, 'Story');
       break;
     case 'field':
+      lastFieldIdx = idx;
       transitionTo(scene, 'Field');
       break;
     case 'battle':

@@ -12,9 +12,37 @@ v2 がv1実装からズレすぎたため、混乱を避けて**殻（UI/物語/
 
 **第1幕が通しで遊べ、第2幕の入口（地中の里）まで地続き。RPGとして肉付け済み（成長・戦闘量・物語量・探索・属性駆け引き・BGM・広い村）。**
 `npm run dev`＝タイトル(はじめから/つづきから)→名前入力→**霧の里**(広いスクロール村ハブ・**ガロの家[屋内]で会話＝クエスト＆形見の魔石**・サブNPC会話・行商人の露店で装備/道具・調べる)→**南門[E]**→**森の小道**→**歌の遺構**(奥ほど強い徘徊石に**無制限ランダム遭遇**・調べる・一度きりの魔石拾得・最奥の番獣)→**番獣戦**(物理)→**里へ帰還しガロの家で報告→「ついてこい」で据炉へ案内**→据炉で**覚醒**(Qの冷たい声・スキル解禁)→魔石盤の**盤戦2連戦**(awakened→frost)→旅立ち→**坑道→地中の里**(石工リーゼの工房＝集積／盤4×4／回復魔法、不干渉派タルゴ)→この先へ[O]→第1幕おわり。
-**敵を倒すとXPでレベルアップ**し HP/物理火力/自由意志が伸びる（通しで L1→L5）。難易度=中間(負けたら戦闘リトライ・各戦闘で全回復)。**オートセーブは覚醒後(魔石装備後)のみ**＝データ奉納の伏線。
+**敵を倒すとXPでレベルアップ**し HP/物理火力/自由意志が伸びる（通しで L1→L5・上がりにくく1戦が重い）。**難易度＝中の上**：HP/自由意志は戦闘間で**消耗を持ち越す**（回復＝宿屋/道具/いやし/覚醒）、無対策の番獣ボスは負ける（敗北リトライだけ全回復＝詰まない）。**覚醒後の里→地中はワールドマップを歩いて移動**（ワープ廃止）。**人物はコード生成のドット絵**（4方向歩行・魔物はシルエット別）。**オートセーブは覚醒後(魔石装備後)のみ**＝データ奉納の伏線。
 **背景＝手続き生成(`bg.ts`)／フィールド＝Kenneyタイル(`tiles.ts`)＋スクロールカメラ＋データ駆動マップ(`maps.ts` の npcs/examines/decor)**。人物は色トークン（立ち絵素材は未供給）。
 通しは `.claude/tmp/autoplay3.cjs`（dev限定 `window.__game`/`__state` を読み、Field=状態で目標切替＋BFS＋NPC会話、Battle=z連打）で **TheEnd到達・戦闘7回・pageエラー0**を確認。**69テスト/typecheck/build 緑**。詳細な最新変更は下の「2026-06-21（続2）」。
+
+### 2026-06-22（続6）3バグ修正（盤リスト固着・テキスト見切れ・ワールド戦闘後に出発地点へ戻る）＋記録通知 〔ponti指示・loopで自走〕
+報告された3バグを根治。**90テスト/typecheck/build 緑**、専用プローブで各バグの修正を確認（pageエラー0）。
+
+- **ワールドで戦闘後に出発地点へ戻るバグ**（最重要）：原因＝`transitionTo` は自身の二重起動しか防がず、**`FieldScene.move()/interact()/openMenu()` がフェード中の入力を処理していた**。大マップで移動キーを押し続けると、遭遇→フェード中のバッファ入力が出口を踏み `useExit` が `fieldResume.active=false` にし、勝利時の resume が失敗→`currentBeat` フォールバックで**P（＝world だけ P があるので“出発地点”）**へ。修正＝`FieldScene.isLeaving()`（`__leaving` を見る）で遷移開始後の入力を無視。プローブで resume が遭遇地点(9,24)を保持＝出発地点(5,24)に戻らないことを確認。
+- **魔石盤の魔石リストが下まで送ると固着して見えるバグ**＋**テキストがウィンドウ右/下に見切れる**：原因＝魔石が大量(40〜55+)だとリストが画面外へ流れ、カーソルが見えず固まったように見える＋monospace 長文が折り返さず右に見切れ。修正＝**カーソルが必ず見える「窓」にリストを切る**（`MenuScene.windowRange`／Shop/Workshop も同様・▲▼で続きを示す）＋**本文に wordWrap**（Menu/Battle/Shop/Workshop の head/body）。プローブで pickIdx=30 まで送ってもカーソルが見え、操作が固まらない（responsive）ことを確認。
+- **記録帳の通知**：新しいロアを記録した時に画面上部へ「✦ 記録帳に書きとめた（[C]→記録）」を短く表示＝収集の手応え。
+
+### 2026-06-21（続5）敵スケール撤廃・複数地方を旅するワールド・詩的オープニング/自室・記録帳・名前反映 〔ponti指示・loopで自走〕
+入力を最初に一括確認（敵スケール＝バグとして撤廃／世界＝複数地方を旅して繋ぐ／読むRPG＝オープニング・自室・到着ナレ・NPC・山場・記録帳）→自走。**90テスト/typecheck/build 緑**、新地方/序章/自室/記録帳を目視（pageエラー0）、autoplay で TheEnd 到達。
+
+- **敵レベルスケール撤廃（“同名の敵が強くなるバグ”を根治）**：`scaleEnemy` を削除。敵は**地方ごとに強さ固定**。難度は「遠い地方ほど強い固有モンスター」で出す（`BattleScene` は `ENEMIES[id]` をそのまま使う）。`combat.test` は固定値で各地方プールが到達Lvの素手で勝てることを担保。
+- **“ようやく隣の里に着く”旅＝複数地方を繋ぐワールド**（`maps.ts`）：里→**草原(world)→丘陵(hills)→荒野(barrens)→山道の関(pass)**→裂け目[D]→坑道→地中の里。各地方＝固有サイズの genCave・到着ナレ(intro)・ランドマークの調べる点・固有魔物(`HILLS/BARRENS/PASS_ENCOUNTERS`)・宝箱。荒野は `withBiome` で乾いた土。`tunnels` 西口は `pass` へ。新地方の連結/着地床は `maps.test` GATES で担保。バイオーム床＝`FieldScene.floorFrame()`（草地/土/石）。
+- **詩的なオープニング＋自室で目覚める**（`script.ts`/`maps.ts`/`FieldScene`）：ACT1 冒頭に**ラプラスの悪魔的な決定論の宇宙論**を詩的に（bg=星空 title）。続いて**自室(hero_room)で目覚める**最初の操作場面（ニナの声で起床→部屋を調べる→扉[d]で外＝フロー進行）。その後に里の朝の状況説明。
+- **名前を全会話へ反映**（`dialogbox.ts`）：`DialogBox.show` が台本中の既定名トークン（`NAMES.heroDefault`）を `game.heroName` に差し替え＝名前を決めた意味がナレ/会話に通る。
+- **記録帳（ロア収集）**（`state.ts` `codex`/`recordLore`・`MenuScene` の「記録」タブ）：調べた事・訪れた土地(intro)を一度だけ記録し読み返せる＝“読むRPG”の収集要素。`FieldScene` が examine/intro 時に `recordLore`。
+- **ナレーション増量**：序章・自室・各地方の到着ナレ・ランドマークの調べる点（氷山の匂わせ＝遺物/古い街跡/関の刻字「あの目から隠れよ」＝据炉の声と接続）・旅立ちの山場を加筆。`ExamineDef.title` で記録帳の見出しを付けられる。
+
+### 2026-06-21（続4）死亡→街へ帰還・広大なワールドマップ・宝箱・ミニマップ・任意の隠しダンジョン 〔ponti指示・loopで自走〕
+入力を最初に一括確認（死亡ペナルティ＝ゴールド半分／世界＝大きく＋見どころ点在／自走改善＝宝箱・ミニマップ・敵バイオーム多様化・任意隠しダンジョン）→自走。**86テスト/typecheck/build 緑**、world/wilds を目視（pageエラー0）。
+
+- **死んだら直近の街へ帰還（リトライ廃止）**：敗北＝気を失い、**直近に訪れた街（霧の里/地中の里）で目覚める**。**ゴールド半分（DQ風）**・HP/自由意志は全回復・**経験/魔石/装備は保持**＝詰み防止（街に戻れば必ず立て直せる＝`autoWinnable` の不変条件は維持）。`state.faintReturnToTown`（ゴールド半減＋`restFull`＋帰還先）／`setLastTown`（街フィールド入場で記録・`game.lastTownMapId`）。フロー戦闘（番獣/盤戦）で倒れたら `flow.rewindToLastField` で直前の field beat（＝街）へ巻き戻し再挑戦できる。BattleScene の `retry()` を `faint()` に置換。
+- **ワールドマップを大幅拡大＋バイオーム＋見どころ**（`maps.ts`）：**54×36 のスクロール大マップ**。`maps.withBiome`＝草原'.'／**荒野床':'**（x≥34・見た目だけ歩ける）／**水'~'**（壁のまま見た目・連結性に影響させない）。見どころ＝**宝箱[T]×4**・**隠れ洞窟[K]**（任意ダンジョンへ）・道標の調べる点。遭遇を有効化（`ENCOUNTER_POOLS.world`）。
+- **任意の隠しダンジョン「忘れられた狩り場」(`wilds`)**：世界の[K]から入る 30×22 の洞窟。手強い遭遇（`WILDS_ENCOUNTERS`）＋宝箱＋**最奥の任意ボス[X]＝狩り場の主**（倒さなくても進める・撃破は `miniboss-wilds` flag で一度だけ・大報酬）。入口[k]で世界へ戻れる。
+- **宝箱システム**（`FieldMap.treasures`＝座標→gold/item/pool(魔石)・`flag` で一度だけ）：歩いて重なると開封。`FieldScene.openTreasure`／未開封＝金箱・開封済＝暗い箱で描画。
+- **ミニマップ**（`FieldScene.buildMinimap`）：大きいスクロールマップで右上に周辺地図＋目的地マーカー（里=青/裂け目=橙/洞窟=紫/宝箱=黄/ボス=赤）＋自機ドット。迷子防止（ponti選択の方角ガイド）。
+- **敵・バイオームの多様化**（`enemies.ts`）：ワールド＝草喰み/裂き鳥/熾火犬（草原）＋砂潜り/陽炎（荒野）。隠しダンジョン＝影狩り/呪甲虫＋任意ボス狩り場の主。`scaleEnemy` で到達Lvに軽くスケール。**不変条件＝到達Lv(world L4-12 / wilds L6-12)の素手で勝てる・任意ボスはL4素手で負けL7素手で勝てる**を `combat.test` で固定。
+- **戦闘間の取り回し**：`tunnels` 西口の世界への着地座標を新世界(44,12)へ修正。`maps.test` に world の'K'・wilds('k'/'X')・水'~'非歩行を追加（連結性/着地床を担保）。
 
 ### 2026-06-21 RPG大改修（ターン制戦闘・ゴールド経済・店・装備・魔石盤の作り替え）〔ponti指示で実施〕
 プレイ→診断→改善の自走で、第1幕を「ふつうのRPGの殻」に整えた。**core 54テスト/typecheck/build 緑、autoplay2 で TheEnd 到達・pageエラー0**（L1→L5・戦闘6・G15→74）。
@@ -47,6 +75,17 @@ v2 がv1実装からズレすぎたため、混乱を避けて**殻（UI/物語/
 - **初の旅立ちの重み・装備動線・ニナの別れ**：クエスト受領後ニナが**装備/道具を促す**（露店・魔石売却の案内）。番獣撃破後の帰還でニナが出迎え、サブNPCが世界観を小出し。
 - **魔石盤メニューを専用パネル化**（`MenuScene`・「魔石セット画面で戦う」混乱の解消）：オーバーレイを**不透明**にし背後のフィールド（＝モンスターが出る場所）を隠す。盤を枠で囲い**入口/出口**ラベル＋「◆ここはスキルを組む編集画面（戦闘ではない）」を明記。心域=横/演算=縦の説明も。
 - 自動プレイ＝`.claude/tmp/autoplay3.cjs`（**NPC会話に対応**＝目標を状態で切替・NPC隣でz・会話送り）。**ハーネスのポートは 5173 に統一**（autoplay2/3・shotmenu・shotfield）。`shotfield.cjs`＝任意マップを撮る道具。
+
+### 2026-06-21（続3）消耗/難易度の作り直し・ワールドマップ・有機ダンジョン・手続きドット絵・盤スロット修正 〔ponti指示・loopで自走〕
+プレイ→診断→改善の自走。入力は最初に一括確認（消耗モデル/ワールドマップ規模/ドット絵の用意法/難易度）。**80テスト/typecheck/build 緑、autoplay3 で TheEnd 到達・pageエラー0**（戦闘20・L1→L5・通し）。
+
+- **HP/自由意志＝消耗を持ち越す**（毎戦闘の全回復を撤廃）：`combat.startCombat` に `hp/freeWill` 省略可（既定満タン＝テスト/autoWinnable）。`BattleScene.fresh(full)`＝通常は現在値、**敗北リトライだけ全回復**（詰み防止）。`grantXp` はレベルアップで全快しない（上限増加ぶんだけ底上げ）。回復＝**宿屋**（`NpcKind 'inn'`・里/地中の里）/道具/回復魔法/覚醒(`restFull`)。**「ドレインした状態で突っ込むと負ける」緊張**（ボス到達時HPが減っている）。
+- **難易度＝中の上**：番獣ボス hp40/atk8/bigEvery3＝**無対策(L1素手)は負け／L2でギリ・L3で安定＋リトライ**で勝てる（`combat.test` で固定）。**レベルが上がりにくい**（`progress.xpStep=10+(L-1)*12`・敵XP半減）。
+- **物理スキル＝こうげきに上乗せ**：`combat.physicalSkillDamage(atk,c)=atk+回路ボーナス`（弱点×2なし）。素のこうげきより弱い物理スキルにしない。元素スキルは従来どおり弱点×2。
+- **ワールドマップ＋有機ダンジョン**（村→地中の「ワープ」解消・四角い小部屋の解消）：`maps.genCave`＝シード付きドランカーズウォーク＋**L字連結保証**で不定形の洞窟/森を生成（path/ruin/tunnels/underville）。新規 **world**（草原＝里[V]⇄地中の裂け目[D]）。覚醒後の里南門[E]は world へ（`boards-done` flag）。到着ナレーション＝`FieldMap.intro`（flagで一度きり）。**連結性・着地点が床・行幅一致は `maps.test.ts`（8件）で担保**。`ENCOUNTER_POOLS` 修正＝**tunnels に遭遇／underville(安全)は無し**（地中の里でモンスターが出るバグ修正）。
+- **人物＝手続き生成ドット絵**（`app/ui/sprites.ts`）：16px・**自動縁取り**・人物4方向×2歩行（`ensureHumanoid`/`humanoidKey`/`heroPalette`）・魔物はシルエット別（beast/bug/bird/blob＝`ensureMonster`/`monsterPalette`）。FieldScene＝主人公/NPCをスプライト化（向き・歩行）、BattleScene＝魔物＋主人公スプライト＋待機アニメ。色トークン代用を置換。外部素材ゼロ・決定論。
+- **魔石盤スロット選択バグ修正**：MenuScene で **←→ がタブ切替に奪われ盤カーソルが横移動できなかった**＝「スロットを自由に選べない」の正体。**タブ＝[Q/E]、←→↑↓＝盤カーソル専用**に変更。さらに**覚醒時に盤を到達Lvまで一気に拡張**（`state.catchUpBoardToLevel`）＝解禁直後から複数スロットを選べる。
+- dev目視：`.claude/tmp/shotfield.cjs <map>`（world/ruin/underville 確認済）、`verify-board.cjs`（盤カーソル横移動＋配置の確認）、`autoplay3.cjs`（**world対応＋予兆で みやぶる**＝ボスを看破で攻略）。dev限定 `window.__setBoard` を追加（目視ツールが実盤を作れる）。
 
 ### 2026-06-20 探索拡張（森の小道＋調べる）
 - **新エリア「森の小道」**：里→遺構の道中マップ `path`（15×9・木の柵）。`script.ts` に field beat を挿入。軽い遭遇（`PATH_ENCOUNTERS`）。遭遇は `ENCOUNTER_POOLS`（mapId→敵表）で汎用化。
@@ -146,10 +185,23 @@ dev サーバ(**5173**)を撮影→Read で目視。雛形は `.claude/tmp/`（g
 - **メニュー/店はポーズ・オーバーレイ**（`scene.launch`＋`scene.pause`、閉じる時 `scene.resume('Field')`）。フィールドの[C]/店タイル[Z]から開く。
 - **魔石盤は 1×1 スタート・文様(edges)は変更不可**（ドロップ品をやりくり）。編集は戦闘外（メニュー）。**覚醒後はレベルアップごとに盤が1段拡張**（`state.nextBoardDims(mind,compute,cap)`・心域優先・上限=`game.boardCap`＝第1幕3／第2幕の工房で4）。最初の装備は1×1のまま。`grantXp` が成長窓口。
 - **魔石の value/属性は工房（集積）で変えられる**（2026-06-21・ponti が決定を緩和）：`fuseValue`（素材を捧げて value+1）／`fuseAttr`（素材の属性へ付け替え）。**文様(edges)だけは依然不変**。地中の里の石工リーゼ[M]＝`WorkshopScene` で操作（`act2` 解禁後）。
-- **戦闘の属性**：敵 `atkAttr/bigAttr/multi`、防具 `resist`（属性別の被ダメ係数・正=耐性/負=弱点）。被ダメ＝`core/combat.strikeDamage`（防御→属性倍率→看破）。**cloth(既定)は resist 空＝既存挙動と同一**＝`autoWinnable` 不変。遭遇敵は `enemies.scaleEnemy(e, level)` で到達Lvに軽くスケール（フロー/ボスは固定）。
+- **戦闘の属性**：敵 `atkAttr/bigAttr/multi`、防具 `resist`（属性別の被ダメ係数・正=耐性/負=弱点）。被ダメ＝`core/combat.strikeDamage`（防御→属性倍率→看破）。**cloth(既定)は resist 空＝既存挙動と同一**＝`autoWinnable` 不変。
+- **敵レベルスケールは撤廃**（2026-06-21 続5・ponti指示「同名の敵が強くなるのはバグ」）：`scaleEnemy` は削除。**敵は地方ごとに強さ固定**＝難度は「遠い地方ほど強い固有モンスター」で出す（`ENCOUNTER_POOLS` を地方別 `WORLD/HILLS/BARRENS/PASS_ENCOUNTERS` に分割）。`BattleScene` は `ENEMIES[id]` をそのまま使う。`combat.test` が各地方プールの固定値で「到達Lvの素手で勝てる」を担保。
+- **旅＝複数地方を歩いて繋ぐ**（続5）：里→草原(world)→丘陵(hills)→荒野(barrens)→山道の関(pass)→裂け目[D]→坑道→地中の里。各地方は `intro`(到着ナレ・記録帳にも記録)・ランドマーク `examines`・固有遭遇。`tunnels` 西口は `pass`。新地方を足したら `maps.test` GATES と着地床、`floorFrame()`/`bgKind()`/`isOutdoors()`/`mapName()`/`objective()` を更新。
+- **オープニング＝詩的序章＋自室**（続5）：ACT1 先頭に決定論の宇宙論（bg title）→ `hero_room` で目覚め（扉 `d` は `hero_room` 限定でフロー進行）→里の朝。**名前は `DialogBox.show` が `NAMES.heroDefault`→`game.heroName` 置換で全会話に反映**（台本は既定名トークンのまま書ける）。
+- **記録帳（記録タブ）**＝`state.codex`/`recordLore(id,title,lines)`（id で一度だけ）。`FieldScene` が examine/intro 時に記録、`MenuScene` の「記録」タブで読み返す。`ExamineDef.title` で見出し可。新規記録は `flashRecorded()` で上部通知。
+- **遷移中の入力は無視**（2026-06-22 続6・重要）：`FieldScene.isLeaving()`（Phaser scene の `__leaving` を見る）＝`transitionTo` が始まったら move/interact/openMenu を弾く。**外さないこと**＝フェード中のバッファ入力が出口を踏んで `fieldResume.active` を壊し「戦闘後に出発地点へ戻る」事故が再発する。`transitionTo` 自体の `__leaving` は“自身の二重起動”しか防がない点に注意。
+- **リストは「窓」に切る＋本文は wordWrap**（続6）：魔石が大量でも画面外へ流れないよう、魔石/装備/記録/店/工房のリストはカーソル中心の窓（`windowRange`/`windowed`・▲▼表示）で描く。Menu/Battle/Shop/Workshop の長文 text には `wordWrap` を付ける（右見切れ防止）。新しくリスト/長文 UI を足す時も同様にする。
 - **回復魔法「いやし」**＝`core/combat.heroMend`（自由意志 `MEND_COST`=4・量 `state.mendPower`=8+心域×6）。`game.flags['healMagic']` 解禁後だけ戦闘コマンドに出る（地中の里のリーゼで解禁）。
 - **マップ往来は `maps.ts` の `exits`**（出口タイル→行き先＋到着座標）。フィールドの進行ゲートは「里南門[E]」「遺構[B]」「地中の里[O]」、扉 `g`/`d`（建物の出入口）。クエスト＝`game.flags.quest`、番獣撃破＝`game.flags['boss-cleared']`（→帰還してガロの家でガロに報告すると据炉=覚醒へ `advance`）。**セーブは v2**。
 - **マップはデータ駆動**（`maps.ts`）：`FieldMap.npcs/examines/decor` を持つマップ（村・garo_house）はそれで描画/会話。持たないマップ（path/ruin/tunnels/underville）は旧来の文字ベース（FieldScene が両対応）。NPCはタイル文字でなく座標データ＝移動の blocked は npc 座標も見る。新NPCは `npcs[]` に足すだけ。
 - **フィールドはカメラスクロール**：固定 `TILE_PX=36`。大マップは `centerOn` 追従。HUD/会話/背景/ミュートは `setScrollFactor(0)`（足し忘れるとスクロールで画面外へ流れる）。`cameras.main.fade/flash/shake` はスクロール非依存（そのまま使える）。
-- **魔石盤の編集は不透明な専用パネル**（`MenuScene`）＝背後のフィールドを見せない（「セット画面で戦う」という誤解を防ぐ）。編集＝メニュー[C]、戦闘＝フィールドの遭遇、で場所を分ける。
+- **魔石盤の編集は不透明な専用パネル**（`MenuScene`）＝背後のフィールドを見せない（「セット画面で戦う」という誤解を防ぐ）。編集＝メニュー[C]、戦闘＝フィールドの遭遇、で場所を分ける。**メニューのタブ切替は[Q/E]・[←→↑↓]は盤カーソル専用**（以前 ←→ がタブを奪い盤スロットを横移動できなかった＝修正済。戻さない）。
+- **HP/自由意志は戦闘間で消耗を持ち越す**（毎戦闘の全回復は廃止）。`combat.startCombat` の hp/freeWill を省くと満タン＝テスト/`autoWinnable` 用。`grantXp` はレベルアップで全快させない。回復は宿(`NpcKind 'inn'`/`state.restFull`)/道具/いやし/覚醒。
+- **敗北＝直近の街へ帰還**（2026-06-21 続4・ponti指示で「その場リトライ」を廃止）：`BattleScene.faint()`＝`state.faintReturnToTown`（**ゴールド半分**・`restFull` 全回復・経験/魔石/装備は保持）→ `game.lastTownMapId`（`setLastTown` が街フィールド入場で記録）へ `transitionTo Field`。フロー戦闘の敗北は `flow.rewindToLastField()` で直前の field beat（街）へ巻き戻して再挑戦可能に。**不変条件＝街帰還＝全回復で到達Lvに勝てる（`autoWinnable`）＝詰まない**は維持（全回復モデルは同一・場所が街になっただけ）。`combat.startCombat` の満タン開始＝この全回復モデルを兼ねる。
+- **ワールドマップ＝広大(54×36)＋バイオーム＋見どころ**（続4）：`maps.withBiome`（荒野床':'歩ける／水'~'壁・連結性に影響させない）、宝箱[T]＝`FieldMap.treasures`（座標→gold/item/pool・flagで一度だけ・`FieldScene.openTreasure`）、隠れ洞窟[K]→任意ダンジョン`wilds`（最奥に任意ボス[X]＝`miniboss-<map>` flag・`BattleScene` の `fixed`/`winFlag` で固定値&撃破フラグ）、ミニマップ＝`FieldScene.buildMinimap`（scrollマップのみ）。遭遇は `ENCOUNTER_POOLS` に world/wilds を追加。新マップを足したら `maps.test` GATES と水'~'非歩行に注意。
+- **番獣ボスは中の上**（hp40/atk8/bigEvery3）＝L1素手で負け・L2素手＋リトライで勝てる（`combat.test`）。数値を触ったら autoWinnable(L1)=false / autoWinnable(L2)=true を保て。**物理スキル＝`physicalSkillDamage`＝atk＋回路ボーナス（弱点×2なし）**＝素のこうげきに上乗せ（弱くしない）。
+- **ダンジョンは `maps.genCave`（シード付き・L字連結保証）で生成**＝不定形・連結保証。`maps.test.ts` が「出口/ゲート相互到達・着地点が床・行幅一致」を担保（新マップを足したら GATES に追加）。**遭遇は tunnels/ruin/path のみ＝underville(地中の里)は安全地帯（`ENCOUNTER_POOLS` に入れない）**。到着ナレーション＝`FieldMap.intro`（flag `intro-<id>` で一度きり）。
+- **人物アート＝`app/ui/sprites.ts` の手続き生成ドット絵**（外部素材ゼロ・自動縁取り・決定論）。人物＝`ensureHumanoid`/`humanoidKey`/`heroPalette`（4方向×2歩行）、魔物＝`ensureMonster`/`monsterKey`/`monsterPalette`（シルエット別）。テクスチャは TextureManager 常駐（exists ガードで一度だけ）。FieldScene/BattleScene が使用。
+- **覚醒後の里南門[E]はワールドマップへ**（`game.flags['boards-done']`＝world初入場で立つ）。覚醒前の盤戦の引き金とは分岐（FieldScene.useExit）。覚醒時に `catchUpBoardToLevel` で盤を到達Lvまで拡張（解禁直後から複数スロット）。
 - 旧プロジェクト `../20260608_algomagia` は改変しない（アーカイブ）。`art-src/`（Kenney生パック）は gitignore＝配信は `public/assets/` のみ。

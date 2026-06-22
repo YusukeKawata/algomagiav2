@@ -28,12 +28,21 @@ export class WorkshopScene extends Phaser.Scene {
     this.msg = `「集積」だ。素材の魔石を捧げて、一枚を鍛える。文様は変えられないよ。`;
     this.add.rectangle(0, 0, CANVAS_W, CANVAS_H, 0x05060d, 0.85).setOrigin(0);
     this.head = this.add.text(60, 40, '', { fontFamily: 'monospace', fontSize: '22px', color: COLORS.text });
-    this.body = this.add.text(60, 110, '', { fontFamily: 'monospace', fontSize: '19px', color: COLORS.text, lineSpacing: 9 });
+    this.body = this.add.text(60, 110, '', { fontFamily: 'monospace', fontSize: '19px', color: COLORS.text, lineSpacing: 9, wordWrap: { width: CANVAS_W - 120 } });
     this.input.keyboard?.on('keydown', (e: KeyboardEvent) => this.onKey(e.key));
     this.render();
   }
 
   private close(): void { playSfx('cancel'); this.scene.stop(); this.scene.resume('Field'); }
+
+  /** カーソルが必ず見える窓のインデックス配列（魔石が多くても画面外へ流れない）。 */
+  private windowed(len: number, idx: number, max = 16): number[] {
+    let from = 0;
+    if (len > max) from = Math.max(0, Math.min(idx - Math.floor(max / 2), len - max));
+    const out: number[] = [];
+    for (let i = from; i < Math.min(len, from + max); i++) out.push(i);
+    return out;
+  }
 
   private stones() { return game.stones; }
   /** 対象を除いた素材候補。 */
@@ -86,14 +95,18 @@ export class WorkshopScene extends Phaser.Scene {
 
     if (!this.picking) {
       lines.push(this.mode === 'value' ? '鍛える魔石を選んで [Z]（素材で魔素量を+1）' : '属性を移す対象を選んで [Z]（素材の属性に変わる）', '');
-      stones.forEach((s, i) => lines.push(`${i === this.targetIdx ? '▶' : ' '}${stoneLabel(s)}`));
+      this.windowed(stones.length, this.targetIdx).forEach((i) => lines.push(`${i === this.targetIdx ? '▶' : ' '}${stoneLabel(stones[i]!)}`));
+      if (stones.length > 16) lines.push(`  （${stones.length}個中・[↑↓]でスクロール）`);
     } else {
       const t = stones[this.targetIdx]!;
+      const mats = this.materials();
       lines.push(`対象: ${stoneLabel(t)} ← 捧げる素材を選ぶ [Z]決定 [X]戻る`, '');
-      this.materials().forEach((s, i) => {
+      this.windowed(mats.length, this.matIdx).forEach((i) => {
+        const s = mats[i]!;
         const note = this.mode === 'attr' ? `（→ ${ATTR_LABEL[s.attr]} に）` : '';
         lines.push(`${i === this.matIdx ? '▶' : ' '}${stoneLabel(s)} ${note}`);
       });
+      if (mats.length > 16) lines.push(`  （${mats.length}個中・[↑↓]でスクロール）`);
     }
     lines.push('', this.msg);
     this.body.setText(lines);
