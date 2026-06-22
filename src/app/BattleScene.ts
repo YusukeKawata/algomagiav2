@@ -254,7 +254,7 @@ export class BattleScene extends Phaser.Scene {
 
     const hitsStr = e.hits > 1 ? `${e.hits}連撃 ` : '';
     let react: string;
-    if (e.telegraph) { react = `${name}は力をためている…！ 次は${attrName ? attrName : ''}大攻撃だ——[みやぶる]で受け流せ。`; playSfx('confirm'); }
+    if (e.telegraph) { react = `${name}は力をためている…！ 次は${attrName ? attrName : ''}大攻撃だ——[みやぶる]で受け流せば、読み切った隙に反撃できる。`; playSfx('confirm'); }
     else if (e.big) { react = e.guarded ? `${name}の${attrName}大攻撃を看破！ 受け流した（${e.dealt}）。` : `${name}の${attrName}大攻撃！ ${e.dealt}ダメージ。`; playSfx(e.guarded ? 'weak' : 'hurt'); }
     else { react = `${name}の${attrName}${hitsStr}攻撃 ${e.guarded ? `${e.dealt}（看破！）` : e.dealt}`; playSfx('hurt'); }
 
