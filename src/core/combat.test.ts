@@ -22,6 +22,37 @@ function circuit(strength: number, element: Circuit['element'], stoneCount: numb
   return { stones, strength, element };
 }
 
+describe('回復属性の回路＝HP回復（§8.9・回路化）', () => {
+  it('heal回路はHPを戻し、敵HPは減らず、自由意志を消費する', () => {
+    const s0 = fresh({ ehp: 20 });
+    const s1: CombatState = { ...s0, hero: { ...s0.hero, hp: 10 } };
+    const c = circuit(6, 'heal', 1);
+    const r = heroSkill(s1, c);
+    expect(r.ok).toBe(true);
+    expect(r.note).toBe('heal');
+    expect(r.healed).toBe(skillBaseDamage(c));
+    expect(r.state.hero.hp).toBe(10 + skillBaseDamage(c));
+    expect(r.state.enemy.hp).toBe(20);            // 敵は無傷
+    expect(r.state.hero.freeWill).toBe(s1.hero.freeWill - circuitCost(c));
+    expect(r.dealt).toBe(0);
+  });
+
+  it('HP上限を超えて回復しない', () => {
+    const s0 = fresh();
+    const s1: CombatState = { ...s0, hero: { ...s0.hero, hp: s0.hero.hpMax - 2 } };
+    const r = heroSkill(s1, circuit(6, 'heal', 1));
+    expect(r.state.hero.hp).toBe(s1.hero.hpMax);
+  });
+
+  it('盤上の heal 石が優勢なら回路の元素は heal になる', () => {
+    const healStone: Stone = { id: 'h', edges: ['L', 'R'], value: 6, attr: 'heal' };
+    const b = place(emptyBoard(1, 1), 0, 0, healStone);
+    const cs = circuits(b);
+    expect(cs.length).toBe(1);
+    expect(cs[0]!.element).toBe('heal');
+  });
+});
+
 describe('ターン制戦闘: 行動', () => {
   it('攻撃は atk ぶん敵HPを削る', () => {
     const r = heroAttack(fresh({ atk: 7 }));
@@ -76,23 +107,35 @@ describe('ターン制戦闘: 行動', () => {
   });
 });
 
-describe('魔石盤: 覚醒後レベルアップで1段ずつ広がる（1×1スタート→心域優先→上限3×3）', () => {
-  it('成長スケジュールが単調（駒の保持はsetBoardSize側）', () => {
+describe('魔石盤の成長＝ゲージ解禁ゲート（world-bible 解禁順：心域→演算）', () => {
+  const LOCKED = { mind: false, compute: false };
+  const MIND = { mind: true, compute: false };
+  const BOTH = { mind: true, compute: true };
+
+  it('両ロック（覚醒直後）＝何度上げても 1×1 のまま', () => {
+    let d = { mind: 1, compute: 1 };
+    for (let i = 0; i < 6; i++) d = nextBoardDims(d.mind, d.compute, 4, LOCKED);
+    expect(d).toEqual({ mind: 1, compute: 1 });
+  });
+
+  it('心域だけ解禁（第二の里）＝横にだけ伸び、上限4×演算1（並列度1）で止まる', () => {
     let d = { mind: 1, compute: 1 };
     const seq = [d];
-    for (let i = 0; i < 6; i++) { d = nextBoardDims(d.mind, d.compute); seq.push(d); }
+    for (let i = 0; i < 5; i++) { d = nextBoardDims(d.mind, d.compute, 4, MIND); seq.push(d); }
     expect(seq).toEqual([
-      { mind: 1, compute: 1 }, { mind: 2, compute: 1 }, { mind: 2, compute: 2 },
-      { mind: 3, compute: 2 }, { mind: 3, compute: 3 }, { mind: 3, compute: 3 }, { mind: 3, compute: 3 },
+      { mind: 1, compute: 1 }, { mind: 2, compute: 1 }, { mind: 3, compute: 1 },
+      { mind: 4, compute: 1 }, { mind: 4, compute: 1 }, { mind: 4, compute: 1 },
     ]);
   });
 
-  it('第2幕の工房で上限を4へ引き上げると 3×3 から 4×4 まで伸びる', () => {
-    let d = { mind: 3, compute: 3 };
+  it('演算も解禁（並列の町）＝心域優先で 4×4 まで育つ', () => {
+    let d = { mind: 1, compute: 1 };
     const seq = [d];
-    for (let i = 0; i < 3; i++) { d = nextBoardDims(d.mind, d.compute, 4); seq.push(d); }
+    for (let i = 0; i < 7; i++) { d = nextBoardDims(d.mind, d.compute, 4, BOTH); seq.push(d); }
     expect(seq).toEqual([
-      { mind: 3, compute: 3 }, { mind: 4, compute: 3 }, { mind: 4, compute: 4 }, { mind: 4, compute: 4 },
+      { mind: 1, compute: 1 }, { mind: 2, compute: 1 }, { mind: 2, compute: 2 },
+      { mind: 3, compute: 2 }, { mind: 3, compute: 3 }, { mind: 4, compute: 3 },
+      { mind: 4, compute: 4 }, { mind: 4, compute: 4 },
     ]);
   });
 });

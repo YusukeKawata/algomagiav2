@@ -4,7 +4,7 @@
 import Phaser from 'phaser';
 import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
 import { currentBeat, advance, rewindToLastField } from '@game/flow';
-import { game, grantXp, addStone, maxHp, heroAtk, heroDef, heroResist, mendPower, boardCircuits, consumeItem, itemCount, faintReturnToTown, fieldResume } from '@game/state';
+import { game, grantXp, addStone, maxHp, heroAtk, heroDef, heroResist, boardCircuits, consumeItem, itemCount, faintReturnToTown, fieldResume } from '@game/state';
 import { ENEMIES, type Enemy } from '@game/data/enemies';
 import { ITEMS } from '@game/data/items';
 import { rollStone, stoneLabel } from '@game/data/stones';
@@ -12,7 +12,7 @@ import { makeRng } from '@core/rng';
 import type { Circuit } from '@core/board';
 import { ATTR_LABEL } from '@core/board';
 import {
-  startCombat, heroAttack, heroSkill, heroGuard, heroHealHp, heroHealFw, heroMend, enemyTurn, circuitCost, MEND_COST,
+  startCombat, heroAttack, heroSkill, heroGuard, heroHealHp, heroHealFw, enemyTurn, circuitCost, skillBaseDamage,
   type CombatState,
 } from '@core/combat';
 import { fadeInOnCreate, addMuteToggle, transitionTo, popupNumber, flash, shake } from '@app/ui/fx';
@@ -32,15 +32,14 @@ const MON_SHAPE: Record<string, MonsterShape> = {
 };
 const HERO_PAL = heroPalette(0x3a6ea5, { hair: 0x4a3220 });
 type Phase = 'root' | 'skill' | 'item' | 'win' | 'lose';
-interface Cmd { key: 'attack' | 'skill' | 'mend' | 'item' | 'guard'; label: string }
+interface Cmd { key: 'attack' | 'skill' | 'item' | 'guard'; label: string }
+// 回復魔法は専用コマンドを廃止＝回復属性石の回路を「スキル」から撃つと回復する（§8.9・回路化）。
 const ROOT_BASE: Cmd[] = [
   { key: 'attack', label: 'こうげき' },
   { key: 'skill', label: 'スキル' },
   { key: 'item', label: 'どうぐ' },
   { key: 'guard', label: 'みやぶる' },
 ];
-// 回復魔法（いやし）は地中の里で解禁（flag healMagic）＝心域から状態を読み戻す。スキルの後ろに差し込む。
-const MEND_CMD: Cmd = { key: 'mend', label: 'いやし' };
 
 export class BattleScene extends Phaser.Scene {
   private mode: 'flow' | 'encounter' = 'flow';
@@ -123,11 +122,8 @@ export class BattleScene extends Phaser.Scene {
     );
   }
 
-  /** 現在のルートコマンド（回復魔法 解禁後は「いやし」を差し込む）。 */
-  private root(): Cmd[] {
-    if (!game.flags['healMagic']) return ROOT_BASE;
-    return [ROOT_BASE[0]!, ROOT_BASE[1]!, MEND_CMD, ROOT_BASE[2]!, ROOT_BASE[3]!];
-  }
+  /** 現在のルートコマンド（こうげき/スキル/どうぐ/みやぶる。回復は回復属性石の回路＝「スキル」から撃つ）。 */
+  private root(): Cmd[] { return ROOT_BASE; }
 
   private circuits(): Circuit[] { return boardCircuits(); }
   private ownedItems(): { id: string; name: string; count: number }[] {
@@ -160,7 +156,6 @@ export class BattleScene extends Phaser.Scene {
       const cmd = this.root()[this.rootIdx]!;
       if (cmd.key === 'attack') { this.doAttack(); return; }
       if (cmd.key === 'guard') { this.doGuard(); return; }
-      if (cmd.key === 'mend') { this.doMend(); return; }
       if (cmd.key === 'skill') {
         if (!game.skillUnlocked) { this.log = 'まだスキルは使えない（覚醒前）。'; playSfx('cancel'); this.render(); return; }
         if (this.circuits().length === 0) { this.log = '撃てる回路がない。魔石盤に魔石を嵌めよう。'; playSfx('cancel'); this.render(); return; }
@@ -192,19 +187,6 @@ export class BattleScene extends Phaser.Scene {
     this.afterHero('みやぶる。…敵の動きを読む（次の攻撃を大きく軽減）。');
   }
 
-  private doMend(): void {
-    if (this.cs.hero.freeWill < MEND_COST) { this.log = `自由意志が足りない（必要${MEND_COST}）。`; playSfx('cancel'); this.render(); return; }
-    if (this.cs.hero.hp >= this.cs.hero.hpMax) { this.log = 'HPは満タンだ。'; playSfx('cancel'); this.render(); return; }
-    const amt = mendPower();
-    const r = heroMend(this.cs, amt);
-    if (!r.ok) { this.render(); return; }
-    this.cs = r.state;
-    playSfx('weak');
-    flash(this, 0x9ef0a8, 120);
-    popupNumber(this, CANVAS_W / 2, CANVAS_H - 240, `HP+${amt}`, { color: '#9ef0a8' });
-    this.afterHero(`いやしの回路。心域から体を読み戻す。HP+${amt}（自由意志-${MEND_COST}）。`);
-  }
-
   private doSkill(): void {
     const cs = this.circuits();
     const c = cs[Math.min(this.subIdx, cs.length - 1)];
@@ -212,11 +194,31 @@ export class BattleScene extends Phaser.Scene {
     if (circuitCost(c) > this.cs.hero.freeWill) { this.log = `自由意志が足りない（必要${circuitCost(c)}）。`; playSfx('cancel'); this.render(); return; }
     const r = heroSkill(this.cs, c);
     this.cs = r.state;
+    this.phase = 'root';
+    const firstWord = this.markSkillUsed();   // 初めてスキルを撃った瞬間の心情（一度きり）
+    // 回復属性の回路＝HPを戻す（敵には当たらない）。
+    if (r.note === 'heal') {
+      const amt = r.healed ?? 0;
+      playSfx('weak');
+      flash(this, ATTR_COLOR['heal'], 120);
+      popupNumber(this, CANVAS_W / 2, CANVAS_H - 240, `HP+${amt}`, { color: '#9ef0a8' });
+      this.afterHero(`癒しの回路。心域から損なわれる前の体を読み戻す。HP+${amt}（自由意志-${r.cost}）。${firstWord}`);
+      return;
+    }
     playSfx(r.weak ? 'weak' : 'fire');
     popupNumber(this, EX, EY - 30, `${r.dealt}`, { color: r.weak ? '#ffe06a' : '#ffd27a', big: r.weak });
     if (r.weak) flash(this, ATTR_COLOR[c.element], 150);
-    this.phase = 'root';
-    this.afterHero(`${ATTR_LABEL[c.element]}スキル！ ${r.dealt}ダメージ${r.weak ? '（弱点！）' : ''}（自由意志-${r.cost}）。`);
+    this.afterHero(`${ATTR_LABEL[c.element]}スキル！ ${r.dealt}ダメージ${r.weak ? '（弱点！）' : ''}（自由意志-${r.cost}）。${firstWord}`);
+  }
+
+  /**
+   * 初めて戦闘でスキルを使った瞬間の心情描写（旧・盤戦2連戦後の独白を移設＝D）。一度きり。
+   * 戻り値＝ログ末尾に差し込む心情（2回目以降は空文字）。
+   */
+  private markSkillUsed(): string {
+    if (game.flags['firstSkillUsed']) return '';
+    game.flags['firstSkillUsed'] = true;
+    return '　／（撃てた。…体の芯から何かを差し出している感覚。けれど、確かに“届く”。）';
   }
 
   private doItem(): void {
@@ -352,8 +354,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.phase === 'root') {
       const row = this.root().map((cmd, i) => {
         const dim = (cmd.key === 'skill' && (!game.skillUnlocked || this.circuits().length === 0))
-          || (cmd.key === 'item' && this.ownedItems().length === 0)
-          || (cmd.key === 'mend' && this.cs.hero.freeWill < MEND_COST);
+          || (cmd.key === 'item' && this.ownedItems().length === 0);
         const mark = i === this.rootIdx ? '▶' : ' ';
         return `${mark}${cmd.label}${dim ? '×' : ''}`;
       }).join('   ');
@@ -366,7 +367,9 @@ export class BattleScene extends Phaser.Scene {
       cs.forEach((cir, i) => {
         const cost = circuitCost(cir);
         const aff = cost <= this.cs.hero.freeWill;
-        out.push(`${i === this.subIdx ? '▶' : ' '}${ATTR_LABEL[cir.element]} 強さ${cir.strength} 費${cost}${aff ? '' : '×'}`);
+        // 回復回路は「ダメージ」でなく「HP回復」として表示（敵には当たらない）。
+        const eff = cir.element === 'heal' ? `回復${skillBaseDamage(cir)}` : `強さ${cir.strength}`;
+        out.push(`${i === this.subIdx ? '▶' : ' '}${ATTR_LABEL[cir.element]} ${eff} 費${cost}${aff ? '' : '×'}`);
       });
     } else if (this.phase === 'item') {
       out.push('どうぐ  [X]戻る');

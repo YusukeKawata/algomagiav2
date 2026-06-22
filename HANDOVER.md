@@ -16,6 +16,16 @@ v2 がv1実装からズレすぎたため、混乱を避けて**殻（UI/物語/
 **背景＝手続き生成(`bg.ts`)／フィールド＝Kenneyタイル(`tiles.ts`)＋スクロールカメラ＋データ駆動マップ(`maps.ts` の npcs/examines/decor)**。人物は色トークン（立ち絵素材は未供給）。
 通しは `.claude/tmp/autoplay3.cjs`（dev限定 `window.__game`/`__state` を読み、Field=状態で目標切替＋BFS＋NPC会話、Battle=z連打）で **TheEnd到達・戦闘7回・pageエラー0**を確認。**69テスト/typecheck/build 緑**。詳細な最新変更は下の「2026-06-21（続2）」。
 
+### 2026-06-22（続7）スロット進行を世界観準拠に・回復を回路化・盤チュートリアル/心情を文脈へ・覚醒前を旅化・村を有機化 〔ponti指示〕
+ponti のフィードバック5点を実装。**97テスト/typecheck/build 緑**。※未実機確認＝**はじめから**で1周プレイ要（autoplay はこのマシンで playwright/chromium パスが `ponti` 固定で動かない）。
+- **スロット進行＝world-bible §132 解禁順に厳密化（重要）**：**覚醒＝自由意志だけ解禁＝盤は 1×1 のまま村を出る**（旧 `catchUpBoardToLevel` の覚醒時一気拡張＝バグを撤廃）。**心域＝横は地中の里で `unlockMind()`**（到達Lvぶん横へ追いつく・上限4＝最大 `4×1`）。**演算＝縦＝並列度は並列の町まで縦ロック＝撃てるスキルは常に1本**。`state.mindUnlocked/computeUnlocked`＋`nextBoardDims(...,unlock)` で解禁ゲート化。`magic-stone-workshop §8.70`/world-bible 実装メモも同期。
+- **回復魔法＝“回復属性石の回路”に回路化**：旧・専用コマンド「いやし」(`heroMend`/`MEND_COST`/`mendPower`/flag `healMagic`) を撤廃。`core/board` に `Attr 'heal'`、`combat.heroSkill` が `element==='heal'` を回復に分岐（量＝`skillBaseDamage`）。**リーゼが回復属性石 `RIESE_STONE` を手渡し＋`unlockMind`**＝盤に嵌めて回路化すると「スキル」で回復が撃てる（§8.9・§61 と一致）。演算ロック中は1回路なので「こうげき(無料)で攻め・単一スキル枠を回復に」のトレードオフ。
+- **盤チュートリアルをストーリーから分離**（C）：`MenuScene` で**初めて魔石盤タブを開いた時**にオーバーレイ表示（flag `boardTutorialSeen`）。台本の手ほどきブロックは除去。
+- **初スキル使用の心情描写**（D）：旧・盤戦2連戦後の独白「（撃てた…）」を、**戦闘で初めてスキルを撃った瞬間**に移設（flag `firstSkillUsed`・`BattleScene.markSkillUsed`）。
+- **盤戦2連戦を削除**（E）：覚醒直後の awakened/frost 盤戦2連戦を撤廃。出発ナレを「番獣の石を据炉にくべたら対の守り石も灯った」へ書き換え（2体撃破依存を解消）。覚醒後は里[E]→出発ダイアログ→世界へ。
+- **覚醒前を“旅”に**（F）：村→遺構が直結に近かったのを、`path` を**広い「霧の野」(40×24・有機生成・到着ナレ/道標/遭遇)** へ拡張＝世界を歩いて歌の遺構へ至る。`village.E`/`ruin.w` の着地座標も整合（maps.test 緑）。
+- **村を有機化**（G）：`village` の単純な矩形を、**うねる木立の縁取り＋機能座標の保護**で“四角くない”レイアウトに（建物/扉/NPC/出口/調べる点は床保証）。`maps.test` に村の連結性テストを追加（P→全機能座標が到達可能）。
+
 ### 2026-06-22（続6）3バグ修正（盤リスト固着・テキスト見切れ・ワールド戦闘後に出発地点へ戻る）＋記録通知 〔ponti指示・loopで自走〕
 報告された3バグを根治。**90テスト/typecheck/build 緑**、専用プローブで各バグの修正を確認（pageエラー0）。
 
@@ -151,10 +161,10 @@ v2 がv1実装からズレすぎたため、混乱を避けて**殻（UI/物語/
 
 着手前に読む: [docs/design/scene-template.md](docs/design/scene-template.md)（シーン/演出/アセットの規約・**bg.ts/tiles.ts/成長の入口**を明記）／[magic-stone-workshop.md](docs/design/magic-stone-workshop.md)（盤の正典）／[ADR-0001](docs/adr/0001-v2-foundation.md)（基盤）。
 
-### 通しプレイ計測（このマシン＝user `ponti`・ポートは 5173 に統一）
+### 通しプレイ計測（ポートは 5173 に統一・**playwright/chromium パスはユーザー非依存に修正済み 2026-06-22**）
 **`.claude/tmp/autoplay3.cjs`（現行・NPC会話対応）**：dev限定 `window.__game`/`__state` を読み、Fieldは状態で目標を切替（扉/門/NPC隣）＋BFS＋NPC隣でz＋会話送り、戦闘はz連打で **TheEnd まで自走**＆スクショ(`c-*.png`)＆pageエラー収集。任意マップの目視は `.claude/tmp/shotfield.cjs <mapId>`（`f-*.png`）、メニュー/店は `.claude/tmp/shotmenu.cjs`（`m-*.png`）。※`autoplay2.cjs` は旧フロー用（NPCゲートを越えられない）。
-- 実行：dev を 5173 で起動 → `node .claude/tmp/autoplay3.cjs`（出力 JSON＋TRAIL）。
-- パス：chromium-1217 と playwright-core は **`C:/Users/ponti/...`**。
+- 実行：dev を 5173 で起動 → `node .claude/tmp/autoplay3.cjs`（出力 JSON＋TRAIL）。**動作確認済み（radiology マシン）＝TheEnd 到達・54戦・pageエラー0**。
+- パス解決：`.claude/tmp/pw.cjs`（**ユーザー非依存**＝`%LOCALAPPDATA%` の npx キャッシュから playwright-core、ms-playwright から chromium を動的解決）。**`.claude/tmp` の全 `*.cjs`（autoplay/autoplay2/autoplay3・shotfield/shotmenu/shot2-4・shotcharge・probe-*・verify-board）がこれを require＝`C:/Users/ponti/...` 固定は全廃**（別マシンでも動く・2026-06-22 一括修正）。明示したい時は環境変数 `PW_CORE`/`PW_CHROMIUM`。
 - dev サーバ停止：`Get-NetTCPConnection -LocalPort 5173 -State Listen | %{ Stop-Process -Id $_.OwningProcess -Force }`。
 - `.claude/tmp/grid.py` は Kenneyシートをグリッド可視化してタイル番地を採取する道具。
 
@@ -173,7 +183,7 @@ npm run dev -- --port 5173 --strictPort   # ポートは 5173 に統一（ハー
 
 ## ブラウザでの実機確認（UI）
 Phaser は WebGL＝ヘッドレスChromeは既定で黒画面。`.claude/tmp/shotfield.cjs <mapId>`／`shotmenu.cjs`／`autoplay3.cjs`
-（playwright-core を npx キャッシュから require／`executablePath` に既存 chromium-1217／`--use-angle=swiftshader` 等）で
+（`.claude/tmp/pw.cjs` が playwright-core/chromium をユーザー非依存に解決／`--use-angle=swiftshader` 等）で
 dev サーバ(**5173**)を撮影→Read で目視。雛形は `.claude/tmp/`（gitignore 済）。
 
 ## 壊すと事故るもの（約束ごと）
@@ -183,7 +193,7 @@ dev サーバ(**5173**)を撮影→Read で目視。雛形は `.claude/tmp/`（g
 - **戦闘は `core/combat.ts`（ターン制）が単一の正**。物理戦/盤戦は廃止＝`BattleScene` 1本。**不変条件＝「到達レベルで攻撃連打で勝てる」**（retryは全回復＆決定論。`autoWinnable`）。`enemies.ts` の数値を変えたら `core/combat.test.ts` を緑に保つ。※ 旧 `phys.ts/battle.ts/board-fight.test.ts` は未使用だがテスト資産として残置（混同しない）。
 - **状態の単一窓口は `state.ts`**：`grantXp()`/`physPower()`/`heroAtk()`/`heroDef()`/`maxHp()`（成長は core `progress.ts`）。魔石＝`stones: Stone[]`、装備＝`weaponId/armorId`＋`ownedWeapons/ownedArmors`、盤＝`board`(`mind×compute`)。HP/火力/自由意志/盤を直接いじらず helper 経由。
 - **メニュー/店はポーズ・オーバーレイ**（`scene.launch`＋`scene.pause`、閉じる時 `scene.resume('Field')`）。フィールドの[C]/店タイル[Z]から開く。
-- **魔石盤は 1×1 スタート・文様(edges)は変更不可**（ドロップ品をやりくり）。編集は戦闘外（メニュー）。**覚醒後はレベルアップごとに盤が1段拡張**（`state.nextBoardDims(mind,compute,cap)`・心域優先・上限=`game.boardCap`＝第1幕3／第2幕の工房で4）。最初の装備は1×1のまま。`grantXp` が成長窓口。
+- **魔石盤は 1×1 スタート・文様(edges)は変更不可**（ドロップ品をやりくり）。編集は戦闘外（メニュー）。**盤の拡張は“解禁済みゲージの方向だけ”**（2026-06-22 続7・上の「ゲージ解禁＝スロット進行」を正とする）＝覚醒では広がらない／心域解禁後に横／演算解禁後に縦。`state.nextBoardDims(mind,compute,cap,unlock)`・`grantXp` が成長窓口（解禁時のみ作動）。**旧「覚醒後は毎Lv無条件に拡張」は撤廃**。
 - **魔石の value/属性は工房（集積）で変えられる**（2026-06-21・ponti が決定を緩和）：`fuseValue`（素材を捧げて value+1）／`fuseAttr`（素材の属性へ付け替え）。**文様(edges)だけは依然不変**。地中の里の石工リーゼ[M]＝`WorkshopScene` で操作（`act2` 解禁後）。
 - **戦闘の属性**：敵 `atkAttr/bigAttr/multi`、防具 `resist`（属性別の被ダメ係数・正=耐性/負=弱点）。被ダメ＝`core/combat.strikeDamage`（防御→属性倍率→看破）。**cloth(既定)は resist 空＝既存挙動と同一**＝`autoWinnable` 不変。
 - **敵レベルスケールは撤廃**（2026-06-21 続5・ponti指示「同名の敵が強くなるのはバグ」）：`scaleEnemy` は削除。**敵は地方ごとに強さ固定**＝難度は「遠い地方ほど強い固有モンスター」で出す（`ENCOUNTER_POOLS` を地方別 `WORLD/HILLS/BARRENS/PASS_ENCOUNTERS` に分割）。`BattleScene` は `ENEMIES[id]` をそのまま使う。`combat.test` が各地方プールの固定値で「到達Lvの素手で勝てる」を担保。
@@ -192,16 +202,17 @@ dev サーバ(**5173**)を撮影→Read で目視。雛形は `.claude/tmp/`（g
 - **記録帳（記録タブ）**＝`state.codex`/`recordLore(id,title,lines)`（id で一度だけ）。`FieldScene` が examine/intro 時に記録、`MenuScene` の「記録」タブで読み返す。`ExamineDef.title` で見出し可。新規記録は `flashRecorded()` で上部通知。
 - **遷移中の入力は無視**（2026-06-22 続6・重要）：`FieldScene.isLeaving()`（Phaser scene の `__leaving` を見る）＝`transitionTo` が始まったら move/interact/openMenu を弾く。**外さないこと**＝フェード中のバッファ入力が出口を踏んで `fieldResume.active` を壊し「戦闘後に出発地点へ戻る」事故が再発する。`transitionTo` 自体の `__leaving` は“自身の二重起動”しか防がない点に注意。
 - **リストは「窓」に切る＋本文は wordWrap**（続6）：魔石が大量でも画面外へ流れないよう、魔石/装備/記録/店/工房のリストはカーソル中心の窓（`windowRange`/`windowed`・▲▼表示）で描く。Menu/Battle/Shop/Workshop の長文 text には `wordWrap` を付ける（右見切れ防止）。新しくリスト/長文 UI を足す時も同様にする。
-- **回復魔法「いやし」**＝`core/combat.heroMend`（自由意志 `MEND_COST`=4・量 `state.mendPower`=8+心域×6）。`game.flags['healMagic']` 解禁後だけ戦闘コマンドに出る（地中の里のリーゼで解禁）。
+- **ゲージ解禁＝スロット進行（2026-06-22 続7・重要）**：world-bible §132 解禁順に厳守。**覚醒＝自由意志のみ＝盤 1×1 のまま村を出る**（`StoryScene` 覚醒で `catchUpBoardToLevel` を呼ばない＝撤廃済み）。横(心域)は `state.unlockMind()`（地中の里リーゼ）、縦(演算)は `state.unlockCompute()`（並列の町・未実装）。`grantXp` の盤拡張は `mindUnlocked||computeUnlocked` のときだけ・`nextBoardDims(...,{mind,compute})` で方向ゲート。**覚醒時に盤を勝手に広げない／心域を覚醒で開かない**こと（戻すと「村を出てもスロット複数」のバグ再発）。
+- **回復魔法＝回復属性石の回路（2026-06-22 続7）**：専用コマンド「いやし」は撤廃（`heroMend`/`MEND_COST`/`mendPower`/flag `healMagic` は無い）。`core/board` の `Attr 'heal'`／`combat.heroSkill` が `element==='heal'` を回復に分岐（量＝`skillBaseDamage`）。リーゼが `RIESE_STONE`（─・heal・6）を付与＝盤に嵌めて heal-優勢回路を組むと「スキル」で回復。**戻して固定コマンド化しないこと**（§61 スキル＝属性組成 と整合）。
 - **マップ往来は `maps.ts` の `exits`**（出口タイル→行き先＋到着座標）。フィールドの進行ゲートは「里南門[E]」「遺構[B]」「地中の里[O]」、扉 `g`/`d`（建物の出入口）。クエスト＝`game.flags.quest`、番獣撃破＝`game.flags['boss-cleared']`（→帰還してガロの家でガロに報告すると据炉=覚醒へ `advance`）。**セーブは v2**。
 - **マップはデータ駆動**（`maps.ts`）：`FieldMap.npcs/examines/decor` を持つマップ（村・garo_house）はそれで描画/会話。持たないマップ（path/ruin/tunnels/underville）は旧来の文字ベース（FieldScene が両対応）。NPCはタイル文字でなく座標データ＝移動の blocked は npc 座標も見る。新NPCは `npcs[]` に足すだけ。
 - **フィールドはカメラスクロール**：固定 `TILE_PX=36`。大マップは `centerOn` 追従。HUD/会話/背景/ミュートは `setScrollFactor(0)`（足し忘れるとスクロールで画面外へ流れる）。`cameras.main.fade/flash/shake` はスクロール非依存（そのまま使える）。
 - **魔石盤の編集は不透明な専用パネル**（`MenuScene`）＝背後のフィールドを見せない（「セット画面で戦う」という誤解を防ぐ）。編集＝メニュー[C]、戦闘＝フィールドの遭遇、で場所を分ける。**メニューのタブ切替は[Q/E]・[←→↑↓]は盤カーソル専用**（以前 ←→ がタブを奪い盤スロットを横移動できなかった＝修正済。戻さない）。
-- **HP/自由意志は戦闘間で消耗を持ち越す**（毎戦闘の全回復は廃止）。`combat.startCombat` の hp/freeWill を省くと満タン＝テスト/`autoWinnable` 用。`grantXp` はレベルアップで全快させない。回復は宿(`NpcKind 'inn'`/`state.restFull`)/道具/いやし/覚醒。
+- **HP/自由意志は戦闘間で消耗を持ち越す**（毎戦闘の全回復は廃止）。`combat.startCombat` の hp/freeWill を省くと満タン＝テスト/`autoWinnable` 用。`grantXp` はレベルアップで全快させない。回復は宿(`NpcKind 'inn'`/`state.restFull`)/道具/**回復属性石の回路（スキル）**/覚醒。
 - **敗北＝直近の街へ帰還**（2026-06-21 続4・ponti指示で「その場リトライ」を廃止）：`BattleScene.faint()`＝`state.faintReturnToTown`（**ゴールド半分**・`restFull` 全回復・経験/魔石/装備は保持）→ `game.lastTownMapId`（`setLastTown` が街フィールド入場で記録）へ `transitionTo Field`。フロー戦闘の敗北は `flow.rewindToLastField()` で直前の field beat（街）へ巻き戻して再挑戦可能に。**不変条件＝街帰還＝全回復で到達Lvに勝てる（`autoWinnable`）＝詰まない**は維持（全回復モデルは同一・場所が街になっただけ）。`combat.startCombat` の満タン開始＝この全回復モデルを兼ねる。
 - **ワールドマップ＝広大(54×36)＋バイオーム＋見どころ**（続4）：`maps.withBiome`（荒野床':'歩ける／水'~'壁・連結性に影響させない）、宝箱[T]＝`FieldMap.treasures`（座標→gold/item/pool・flagで一度だけ・`FieldScene.openTreasure`）、隠れ洞窟[K]→任意ダンジョン`wilds`（最奥に任意ボス[X]＝`miniboss-<map>` flag・`BattleScene` の `fixed`/`winFlag` で固定値&撃破フラグ）、ミニマップ＝`FieldScene.buildMinimap`（scrollマップのみ）。遭遇は `ENCOUNTER_POOLS` に world/wilds を追加。新マップを足したら `maps.test` GATES と水'~'非歩行に注意。
 - **番獣ボスは中の上**（hp40/atk8/bigEvery3）＝L1素手で負け・L2素手＋リトライで勝てる（`combat.test`）。数値を触ったら autoWinnable(L1)=false / autoWinnable(L2)=true を保て。**物理スキル＝`physicalSkillDamage`＝atk＋回路ボーナス（弱点×2なし）**＝素のこうげきに上乗せ（弱くしない）。
 - **ダンジョンは `maps.genCave`（シード付き・L字連結保証）で生成**＝不定形・連結保証。`maps.test.ts` が「出口/ゲート相互到達・着地点が床・行幅一致」を担保（新マップを足したら GATES に追加）。**遭遇は tunnels/ruin/path のみ＝underville(地中の里)は安全地帯（`ENCOUNTER_POOLS` に入れない）**。到着ナレーション＝`FieldMap.intro`（flag `intro-<id>` で一度きり）。
 - **人物アート＝`app/ui/sprites.ts` の手続き生成ドット絵**（外部素材ゼロ・自動縁取り・決定論）。人物＝`ensureHumanoid`/`humanoidKey`/`heroPalette`（4方向×2歩行）、魔物＝`ensureMonster`/`monsterKey`/`monsterPalette`（シルエット別）。テクスチャは TextureManager 常駐（exists ガードで一度だけ）。FieldScene/BattleScene が使用。
-- **覚醒後の里南門[E]はワールドマップへ**（`game.flags['boards-done']`＝world初入場で立つ）。覚醒前の盤戦の引き金とは分岐（FieldScene.useExit）。覚醒時に `catchUpBoardToLevel` で盤を到達Lvまで拡張（解禁直後から複数スロット）。
+- **覚醒後の里南門[E]はワールドマップへ**（`game.flags['boards-done']`＝world初入場で立つ）。覚醒直後の[E]は出発ダイアログへ `advance`（旧・覚醒前盤戦は撤廃済み）＝FieldScene.useExit。**覚醒で盤は広げない**（1×1のまま村を出る＝上の続7参照）。
 - 旧プロジェクト `../20260608_algomagia` は改変しない（アーカイブ）。`art-src/`（Kenney生パック）は gitignore＝配信は `public/assets/` のみ。

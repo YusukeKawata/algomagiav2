@@ -1,7 +1,7 @@
 // 第2幕の状態ロジック（魔石工房の集積＝強化/属性うつし・盤上限の引き上げ）のテスト。
 // 文様(edges)は不変・value/属性のみ変わる、素材は消える、盤の上限が伸びると1段広がる、を固定。
 import { describe, it, expect, beforeEach } from 'vitest';
-import { game, addStone, fuseValue, fuseAttr, raiseBoardCap, placeStone, resetGame, freeStones, setLastTown, faintReturnToTown, maxHp, recordLore } from '@game/state';
+import { game, addStone, fuseValue, fuseAttr, unlockMind, unlockCompute, placeStone, resetGame, freeStones, setLastTown, faintReturnToTown, maxHp, recordLore } from '@game/state';
 import { makeStone } from '@game/data/stones';
 
 beforeEach(() => resetGame());
@@ -80,13 +80,36 @@ describe('魔石工房：集積（属性うつし）', () => {
   });
 });
 
-describe('盤の上限引き上げ（第2幕の工房）', () => {
-  it('上限を4へ引き上げると即1段広がる。再度同じ上限なら何も起きない', () => {
+describe('ゲージ解禁＝スロット進行（world-bible 解禁順）', () => {
+  it('覚醒直後（心域ロック）は、強くなっても盤が 1×1 のまま伸びない', () => {
+    resetGame();
+    game.skillUnlocked = true;          // 自由意志ゲートは開いた（スキルは使える）
+    game.level = 5;                     // 旅で強くなったとみなす
+    // mindUnlocked/computeUnlocked は false のまま。
+    expect(game.mind).toBe(1);
+    expect(game.compute).toBe(1);
+  });
+
+  it('心域解禁＝第二の里で横へ追いつき、上限4×演算1（並列度1）。演算は縦ロックのまま', () => {
+    resetGame();
     game.skillUnlocked = true;
-    game.mind = 3; game.compute = 3;
-    expect(raiseBoardCap(4)).toBe(true);
+    game.level = 5;                     // L5 相当まで強くなってから心域解禁
+    expect(unlockMind()).toBe(true);
+    expect(game.mindUnlocked).toBe(true);
     expect(game.boardCap).toBe(4);
-    expect(game.mind + game.compute).toBe(7); // 3×3 → 4×3（心域優先）
-    expect(raiseBoardCap(4)).toBe(false);     // 同じ上限は無効
+    expect(game.mind).toBe(4);          // 横は上限まで追いつく
+    expect(game.compute).toBe(1);       // 縦は演算ロックゆえ1のまま＝1回路＝スキル1つ
+    expect(unlockMind()).toBe(false);   // 二重解禁は無効
+  });
+
+  it('演算解禁＝並列の町で縦も伸び、心域優先で 4×4 まで育つ', () => {
+    resetGame();
+    game.skillUnlocked = true;
+    game.level = 9;
+    unlockMind();                       // まず心域（4×1）
+    expect(unlockCompute()).toBe(true);
+    expect(game.computeUnlocked).toBe(true);
+    expect(game.mind).toBe(4);
+    expect(game.compute).toBe(4);       // 縦も追いつく
   });
 });

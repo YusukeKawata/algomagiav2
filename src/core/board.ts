@@ -5,13 +5,15 @@
 export type Edge = 'L' | 'R' | 'U' | 'D';
 
 /** 属性（元素）。スキルの種類は経路の属性組成で決まる（magic-stone-workshop.md §8）。
- *  physical＝物理（無属性の基礎攻撃。ガロの初期魔石はこれ）。同点判定順を変えないよう末尾に置く。 */
-export type Attr = 'fire' | 'ice' | 'thunder' | 'wind' | 'physical';
-export const ATTRS: Attr[] = ['fire', 'ice', 'thunder', 'wind', 'physical'];
+ *  physical＝物理（無属性の基礎攻撃。ガロの初期魔石はこれ）。
+ *  heal＝回復（心域の魔法。第二の里で得る回復属性石が heal-優勢の回路を組むと「回復スキル」になる。§8.9）。
+ *  ※ ATTRS の順は dominantAttr の同点先勝ちに効く。元素より弱い同点で勝たぬよう physical/heal を末尾に置く。 */
+export type Attr = 'fire' | 'ice' | 'thunder' | 'wind' | 'physical' | 'heal';
+export const ATTRS: Attr[] = ['fire', 'ice', 'thunder', 'wind', 'physical', 'heal'];
 
 /** 属性の表示名（UI・ログ共通）。色は app 層（ui/attrs）に置く。 */
 export const ATTR_LABEL: Record<Attr, string> = {
-  fire: '炎', ice: '氷', thunder: '雷', wind: '風', physical: '物',
+  fire: '炎', ice: '氷', thunder: '雷', wind: '風', physical: '物', heal: '癒',
 };
 
 /** 1マス駒。edges は互いに導通する辺の集合（例: ['L','R']＝直線, ['L','R','U','D']＝十字）。attr＝属性。 */

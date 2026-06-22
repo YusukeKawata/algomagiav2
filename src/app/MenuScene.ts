@@ -23,6 +23,7 @@ export class MenuScene extends Phaser.Scene {
   private cx = 0; private cy = 0; // 盤カーソル
   private picking = false; private pickIdx = 0; // 盤：置く魔石を選ぶサブモード
   private reading = false;  // 記録帳：項目を開いて全文を読むサブモード
+  private tutorial = false; // 魔石盤を初めて開いた時のチュートリアル・オーバーレイ（一度きり）
   private g!: Phaser.GameObjects.Graphics;
   private head!: Phaser.GameObjects.Text;
   private body!: Phaser.GameObjects.Text;
@@ -32,7 +33,7 @@ export class MenuScene extends Phaser.Scene {
   constructor() { super('Menu'); }
 
   create(): void {
-    this.tab = 0; this.idx = 0; this.cx = 0; this.cy = 0; this.picking = false; this.msg = '';
+    this.tab = 0; this.idx = 0; this.cx = 0; this.cy = 0; this.picking = false; this.msg = ''; this.tutorial = false;
     // 不透明パネル＝背後のフィールド（＝モンスターが出る場所）が透けないようにする。
     // 「魔石盤を編集する画面」と「戦闘する場所」を視覚的にはっきり分ける。
     this.add.rectangle(0, 0, CANVAS_W, CANVAS_H, 0x070a14, 1).setOrigin(0).setDepth(0);
@@ -57,12 +58,16 @@ export class MenuScene extends Phaser.Scene {
 
   private onKey(key: string): void {
     const k = key.toLowerCase();
+    // チュートリアル表示中は、どのキーでも閉じる（一度きり・[C/X/Z/Enter]）。
+    if (this.tutorial) { this.tutorial = false; game.flags['boardTutorialSeen'] = true; playSfx('confirm'); this.render(); return; }
     if (this.picking) { this.pickKey(key, k); return; }
     if (k === 'c' || k === 'x' || key === 'Escape') { this.close(); return; }
     // タブ切替は [Q/E]（[←→] は魔石盤のカーソル＝スロットを自由に選ぶために空ける。以前は←→がタブを奪っていた）。
     if (k === 'q' || k === 'e') {
       this.tab = (this.tab + (k === 'e' ? 1 : TABS.length - 1)) % TABS.length;
-      this.idx = 0; this.cx = 0; this.cy = 0; this.msg = ''; this.reading = false; playSfx('move'); this.render(); return;
+      this.idx = 0; this.cx = 0; this.cy = 0; this.msg = ''; this.reading = false;
+      this.maybeBoardTutorial();
+      playSfx('move'); this.render(); return;
     }
 
     if (this.tab === 1) this.equipKey(key);
@@ -169,10 +174,38 @@ export class MenuScene extends Phaser.Scene {
     this.body.setText(lines);
   }
 
+  /** 魔石盤を初めて開いた時だけチュートリアルを出す（ストーリーから分離＝文脈で学ぶ）。 */
+  private maybeBoardTutorial(): void {
+    if (this.tab === 2 && !game.flags['boardTutorialSeen']) this.tutorial = true;
+  }
+
+  /** チュートリアル本文（旧・覚醒直後の台本から移設＝盤の操作を、初めて盤を開いた“その場”で読む）。 */
+  private tutorialLines(): string[] {
+    return [
+      '——「魔石盤」。ここは、スキルを組む“編集”の画面だ（戦闘ではない）。',
+      '',
+      '・[←→↑↓] でマスを選び、[Z] で魔石を嵌める／外す。',
+      '・左端から右端へ、文様(かたち)が一本につながった経路＝撃てる「スキル」が1本になる。',
+      '・スキルの強さ＝その経路の魔石の「魔素量」の合計。長い回路ほど強い。',
+      '・属性は経路の組成で決まる（弱点を突くと2倍）。回復属性をつなげば「回復スキル」になる。',
+      '・文様(かたち)は変えられない。ドロップした魔石をやりくりして組むのが、盤の戦い方だ。',
+      '',
+      `・いまの盤は ${game.mind}×${game.compute}（心域×演算）。覚醒したばかりは横一列——スキルは1本ずつ。`,
+      '・強くなり、やがて「心域」が開けば盤は横に広がる。さらに先で「演算」が開けば、複数のスキルを同時に持てる。',
+      '',
+      '　［なにかキーを押して、盤を編集する］',
+    ];
+  }
+
   // ——— 描画 ———
   private render(): void {
     this.g.clear();
     this.boardLabels.removeAll(true);
+    if (this.tutorial) {
+      this.head.setText('魔石盤 — はじめての手ほどき');
+      this.body.setText(this.tutorialLines());
+      return;
+    }
     this.head.setText(TABS.map((t, i) => (i === this.tab ? `【${t}】` : ` ${t} `)).join('  ') + '    [Q/E]タブ切替 [←→↑↓]カーソル [C/X]閉じる');
     if (this.tab === 0) this.renderStatus();
     else if (this.tab === 1) this.renderEquip();
