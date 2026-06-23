@@ -371,15 +371,17 @@ export class FieldScene extends Phaser.Scene {
     this.tweens.add({ targets: t, alpha: 1, duration: 200, yoyo: true, hold: 1100, onComplete: () => t.destroy() });
   }
 
-  /** 同マス/隣接の野営地（焚き火）を返す。 */
-  private campAt(): CampDef | null {
-    const camps = this.map.camps ?? [];
+  /** 同マス/隣接（上下左右）にある最初の {x,y} 要素を返す（調べる/野営地の共通スキャン）。 */
+  private nearby<T extends { x: number; y: number }>(list: readonly T[]): T | null {
     for (const [dx, dy] of [[0, 0], [0, -1], [0, 1], [-1, 0], [1, 0]] as const) {
-      const c = camps.find((e) => e.x === this.px + dx && e.y === this.py + dy);
-      if (c) return c;
+      const found = list.find((e) => e.x === this.px + dx && e.y === this.py + dy);
+      if (found) return found;
     }
     return null;
   }
+
+  /** 同マス/隣接の野営地（焚き火）を返す。 */
+  private campAt(): CampDef | null { return this.nearby(this.map.camps ?? []); }
 
   /** 野営地で休む＝HP/自由意志を全回復（無料・街が遠い旅の救済）。初回は旅の心情を一幕。 */
   private talkCamp(camp: CampDef): void {
@@ -394,29 +396,27 @@ export class FieldScene extends Phaser.Scene {
     this.restAtCamp(camp);
   }
 
+  /** 休息の確定処理＝全回復＋演出＋完了メッセージ（宿/野営地で共有）。 */
+  private doRest(who: string, color: number, doneLine: string, dur = 180): void {
+    restFull();
+    playSfx('confirm');
+    flash(this, color, dur);
+    this.updateHud();
+    this.openTalk(who, [doneLine]);
+  }
+
   /** 焚き火で休息＝全回復（既に満タンなら火を眺めるだけ）。 */
   private restAtCamp(camp: CampDef): void {
     if (game.heroHp >= maxHp() && game.freeWill >= game.freeWillMax) {
       this.openTalk('', ['焚き火は暖かい。…が、いまは疲れも見えない。少し眺めて、また歩き出そう。']);
       return;
     }
-    this.openTalk('', camp.lines, () => {
-      restFull();
-      playSfx('confirm');
-      flash(this, 0xffb86a, 200);
-      this.updateHud();
-      this.openTalk('', ['——焚き火で、旅の疲れを癒した。HPと自由意志が満ちている。']);
-    });
+    this.openTalk('', camp.lines, () => this.doRest('', 0xffb86a, '——焚き火で、旅の疲れを癒した。HPと自由意志が満ちている。', 200));
   }
 
   /** 同マス/隣接の「調べる」点を返す（マップ自身の examines 優先→旧式の EXAMINES）。 */
   private examineAt(): Examine | null {
-    const pts: Examine[] = this.map.examines ?? EXAMINES[this.map.id] ?? [];
-    for (const [dx, dy] of [[0, 0], [0, -1], [0, 1], [-1, 0], [1, 0]] as const) {
-      const p = pts.find((e) => e.x === this.px + dx && e.y === this.py + dy);
-      if (p) return p;
-    }
-    return null;
+    return this.nearby(this.map.examines ?? EXAMINES[this.map.id] ?? []);
   }
 
   /** データNPCを種別ごとに処理（村・ガロの家）。 */
@@ -467,11 +467,7 @@ export class FieldScene extends Phaser.Scene {
     }
     this.openTalk(who, [`一晩 ${fee}G で、よく休んでいきな。`], () => {
       game.gold -= fee;
-      restFull();
-      playSfx('confirm');
-      flash(this, 0x9ef0a8, 160);
-      this.updateHud();
-      this.openTalk(who, [`——ぐっすり眠った。HPと自由意志が満ちている。（-${fee}G）`]);
+      this.doRest(who, 0x9ef0a8, `——ぐっすり眠った。HPと自由意志が満ちている。（-${fee}G）`, 160);
     });
   }
 

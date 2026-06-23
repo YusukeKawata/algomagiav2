@@ -204,11 +204,16 @@ export class BattleScene extends Phaser.Scene {
    *   ※ フロー戦（ボス）と覚醒前では root() に出ないので、ボス前のレベリングは温存＝詰み防止は不変。
    */
   private doFlee(): void {
+    // 決定論シード（その状況で結果は一意＝乱数の理不尽さを避ける）。失敗後は敵の手番で状況が変わるので、
+    //   同一戦闘内の次の試行は別結果になりうる（＝粘れば抜けられる）。
     const r = makeRng(this.cs.turn * 37 + this.cs.enemy.hp * 7 + this.cs.hero.hp * 13 + 5);
     if (r() < 0.75) {
       this.fleeing = true;
       playSfx('cancel');
       this.log = 'すばやく間合いを切って、その場を離れた。';
+      // 持ち越すHP/自由意志を明示的にコミット（他の退出path=onWin/faintと同様に自己完結させる）。
+      game.heroHp = this.cs.hero.hp;
+      game.freeWill = this.cs.hero.freeWill;
       this.render();
       this.time.delayedCall(280, () => { fieldResume.active = true; transitionTo(this, 'Field', { resume: true }); });
       return;

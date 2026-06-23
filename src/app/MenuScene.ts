@@ -172,9 +172,12 @@ export class MenuScene extends Phaser.Scene {
       this.body.setText([`【記録帳】${e.title}`, '', ...e.lines, ...extra, '', '[Z/X] 一覧へ戻る']);
       return;
     }
-    // 分類カウンタ＝何がどれだけ集まったか一目で（収集の手応え）。
-    const beast = list.filter((e) => e.id.startsWith('bestiary:')).length;
-    const land = list.filter((e) => e.id.startsWith('place:') || e.id.startsWith('camp:')).length;
+    // 分類カウンタ＝何がどれだけ集まったか一目で（収集の手応え）。1パスで集計。
+    let beast = 0, land = 0;
+    for (const e of list) {
+      if (e.id.startsWith('bestiary:')) beast++;
+      else if (e.id.startsWith('place:') || e.id.startsWith('camp:')) land++;
+    }
     const found = list.length - beast - land;
     const lines = [
       `記録帳  [↑↓]選んで [Z]読む  （全${list.length}件）`,
