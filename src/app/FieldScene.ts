@@ -4,7 +4,7 @@ import Phaser from 'phaser';
 import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
 import { currentBeat, advance } from '@game/flow';
 import { fieldResume, game, grantXp, addStone, addItem, maxHp, unlockMind, restFull, setLastTown, recordLore } from '@game/state';
-import { MAPS, tileAt, findChar, mapCols, mapRows, type FieldMap, type MapExit, type NpcDef, type DecorKey, type TreasureDef } from '@game/data/maps';
+import { MAPS, tileAt, findChar, mapCols, mapRows, type FieldMap, type MapExit, type NpcDef, type DecorKey, type TreasureDef, type CampDef } from '@game/data/maps';
 import { ITEMS } from '@game/data/items';
 import { NAMES as N } from '@game/data/names';
 import { ENCOUNTER_POOLS } from '@game/data/enemies';
@@ -120,7 +120,7 @@ export class FieldScene extends Phaser.Scene {
     }
 
     paintScene(this, this.bgKind()).setScrollFactor(0); // 背景はスクロールしても画面に固定（バックドロップ）
-    startBgm(this.bgKind() === 'under' ? 'under' : this.bgKind() === 'ruin' ? 'ruin' : 'village');
+    startBgm(this.bgmTrack());
     ensureHumanoid(this, 'hero', HERO_PAL);
     this.buildStatic();
     this.playerImg = this.add.image(this.cx(this.px), this.cy(this.py), humanoidKey('hero', 'down', 0))
@@ -153,6 +153,15 @@ export class FieldScene extends Phaser.Scene {
       if (recordLore(`place:${this.map.id}`, `${this.mapName()} —— 土地の記憶`, this.map.intro)) this.flashRecorded(); // 訪れた土地を記録帳へ
       this.openTalk('', this.map.intro);
     }
+  }
+
+  /** マップ→BGMトラック。長い旅路（霧の野/草原/丘陵/荒野/山道）は専用の「旅路」テーマ＝歩き続ける長い道。 */
+  private bgmTrack(): 'under' | 'ruin' | 'village' | 'travel' {
+    const id = this.map.id;
+    if (id === 'path' || id === 'world' || id === 'hills' || id === 'barrens' || id === 'pass') return 'travel';
+    if (id === 'underville' || id === 'tunnels') return 'under';
+    if (id === 'ruin' || id === 'wilds') return 'ruin';
+    return 'village';
   }
 
   /** マップ→背景アート。地下＝under、洞窟/遺構/山道＝ruin、荒野＝depart、それ以外＝village。 */
@@ -317,7 +326,10 @@ export class FieldScene extends Phaser.Scene {
       if (t === 'M') { this.talkMaker(); return; }
       if (t === 'G') { this.talkElder(); return; }
     }
-    // NPCが居なければ「調べる」点（同マス/隣接）
+    // NPCが居なければ野営地（焚き火＝休息点）を探す（同マス/隣接）
+    const camp = this.campAt();
+    if (camp) { this.talkCamp(camp); return; }
+    // それも無ければ「調べる」点（同マス/隣接）
     const ex = this.examineAt();
     if (ex) {
       this.recordExamine(ex); // 記録帳に残す（読み返せる）
@@ -359,14 +371,52 @@ export class FieldScene extends Phaser.Scene {
     this.tweens.add({ targets: t, alpha: 1, duration: 200, yoyo: true, hold: 1100, onComplete: () => t.destroy() });
   }
 
-  /** 同マス/隣接の「調べる」点を返す（マップ自身の examines 優先→旧式の EXAMINES）。 */
-  private examineAt(): Examine | null {
-    const pts: Examine[] = this.map.examines ?? EXAMINES[this.map.id] ?? [];
+  /** 同マス/隣接（上下左右）にある最初の {x,y} 要素を返す（調べる/野営地の共通スキャン）。 */
+  private nearby<T extends { x: number; y: number }>(list: readonly T[]): T | null {
     for (const [dx, dy] of [[0, 0], [0, -1], [0, 1], [-1, 0], [1, 0]] as const) {
-      const p = pts.find((e) => e.x === this.px + dx && e.y === this.py + dy);
-      if (p) return p;
+      const found = list.find((e) => e.x === this.px + dx && e.y === this.py + dy);
+      if (found) return found;
     }
     return null;
+  }
+
+  /** 同マス/隣接の野営地（焚き火）を返す。 */
+  private campAt(): CampDef | null { return this.nearby(this.map.camps ?? []); }
+
+  /** 野営地で休む＝HP/自由意志を全回復（無料・街が遠い旅の救済）。初回は旅の心情を一幕。 */
+  private talkCamp(camp: CampDef): void {
+    const firstFlag = `camp-first:${this.map.id}:${camp.x},${camp.y}`;
+    // 初回＝旅の内省を読み、記録帳にも残す（“読むRPG”の一幕）。
+    if (camp.first && camp.first.length && !game.flags[firstFlag]) {
+      game.flags[firstFlag] = true;
+      if (recordLore(`camp:${this.map.id}:${camp.x},${camp.y}`, camp.name, camp.first)) this.flashRecorded();
+      this.openTalk('', camp.first, () => this.restAtCamp(camp));
+      return;
+    }
+    this.restAtCamp(camp);
+  }
+
+  /** 休息の確定処理＝全回復＋演出＋完了メッセージ（宿/野営地で共有）。 */
+  private doRest(who: string, color: number, doneLine: string, dur = 180): void {
+    restFull();
+    playSfx('confirm');
+    flash(this, color, dur);
+    this.updateHud();
+    this.openTalk(who, [doneLine]);
+  }
+
+  /** 焚き火で休息＝全回復（既に満タンなら火を眺めるだけ）。 */
+  private restAtCamp(camp: CampDef): void {
+    if (game.heroHp >= maxHp() && game.freeWill >= game.freeWillMax) {
+      this.openTalk('', ['焚き火は暖かい。…が、いまは疲れも見えない。少し眺めて、また歩き出そう。']);
+      return;
+    }
+    this.openTalk('', camp.lines, () => this.doRest('', 0xffb86a, '——焚き火で、旅の疲れを癒した。HPと自由意志が満ちている。', 200));
+  }
+
+  /** 同マス/隣接の「調べる」点を返す（マップ自身の examines 優先→旧式の EXAMINES）。 */
+  private examineAt(): Examine | null {
+    return this.nearby(this.map.examines ?? EXAMINES[this.map.id] ?? []);
   }
 
   /** データNPCを種別ごとに処理（村・ガロの家）。 */
@@ -380,6 +430,7 @@ export class FieldScene extends Phaser.Scene {
       case 'underElder': this.talkUnderElder(); return;
       case 'maker': this.talkMaker(); return;
       case 'inn': this.talkInn(npc.name ?? '宿屋'); return;
+      case 'merchant': this.talkMerchant(); return;
       default: this.openTalk(npc.name ?? '', npc.lines ?? ['…。']); return;
     }
   }
@@ -416,12 +467,22 @@ export class FieldScene extends Phaser.Scene {
     }
     this.openTalk(who, [`一晩 ${fee}G で、よく休んでいきな。`], () => {
       game.gold -= fee;
-      restFull();
-      playSfx('confirm');
-      flash(this, 0x9ef0a8, 160);
-      this.updateHud();
-      this.openTalk(who, [`——ぐっすり眠った。HPと自由意志が満ちている。（-${fee}G）`]);
+      this.doRest(who, 0x9ef0a8, `——ぐっすり眠った。HPと自由意志が満ちている。（-${fee}G）`, 160);
     });
+  }
+
+  /** 旅の行商人（荒野の廃墟で店を開く）。初回は一言交わしてから店（道中の補給）を開く。 */
+  private talkMerchant(): void {
+    if (!game.flags['met-merchant']) {
+      game.flags['met-merchant'] = true;
+      this.openTalk('旅の行商人', [
+        'おっと、驚かせたかい。…こんな滅んだ街の跡で店を開くのは、私くらいのものさ。',
+        '物好きと笑うがいい。だが——人が通らない道にこそ、薬のいる旅人が通る。違うかね。',
+        '回復薬は揃えてある。重たい魔石は買い取るよ。…さあ、何が入り用だい。',
+      ], () => this.openShop('road'));
+      return;
+    }
+    this.openShop('road');
   }
 
   private talkElder(): void {
@@ -647,6 +708,16 @@ export class FieldScene extends Phaser.Scene {
       label(n.x, n.y, n.name ?? '', shop ? '#ffe0a0' : COLORS.dim, -0.62);
     }
 
+    // 野営地（焚き火＝休息点）。石組みの炉＋ゆらぐ炎＋名札。
+    for (const camp of this.map.camps ?? []) {
+      const cx = this.cx(camp.x), cy = this.cy(camp.y);
+      this.add.ellipse(cx, cy + T * 0.18, T * 0.62, T * 0.34, 0x3a3026).setStrokeStyle(2, 0x6a5a44).setDepth(3); // 石組みの炉
+      const flame = this.add.ellipse(cx, cy - T * 0.04, T * 0.34, T * 0.5, 0xff8a3a).setDepth(4);
+      this.add.ellipse(cx, cy + T * 0.02, T * 0.18, T * 0.3, 0xffe27a).setDepth(5); // 芯
+      this.tweens.add({ targets: flame, scaleX: 0.8, scaleY: 1.12, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.inOut' }); // ゆらぎ
+      label(camp.x, camp.y, `${camp.name}（焚き火で休める）`, '#ffcaa0', -0.58);
+    }
+
     // 装飾（データ駆動 or 旧マップのハードコード）。
     if (this.map.decor) {
       for (const d of this.map.decor) addTile(this, this.cx(d.x), this.cy(d.y), this.decorFrame(d.key), T * (d.scale ?? 1));
@@ -727,6 +798,10 @@ export class FieldScene extends Phaser.Scene {
     for (const t of this.map.treasures ?? []) if (game.flags[t.flag]) {
       g.fillStyle(0x6a6040, 1).fillRect(this.miniX + t.x * this.miniScale, this.miniY + t.y * this.miniScale, this.miniScale, this.miniScale);
     }
+    // 野営地（焚き火）＝橙のマーカー（休息点を見つけやすく）。
+    for (const camp of this.map.camps ?? []) {
+      g.fillStyle(0xff9a4a, 1).fillRect(this.miniX + camp.x * this.miniScale - 1, this.miniY + camp.y * this.miniScale - 1, this.miniScale + 2, this.miniScale + 2);
+    }
     this.add.text(this.miniX - 2, this.miniY - 17, '周辺の地図', { fontFamily: 'sans-serif', fontSize: '12px', color: '#cfe0ff' }).setScrollFactor(0).setDepth(29);
     this.miniDot = this.add.graphics().setScrollFactor(0).setDepth(30);
     this.updateMinimap();
@@ -742,6 +817,11 @@ export class FieldScene extends Phaser.Scene {
   }
 
   private updateHud(): void {
-    this.hud.setText(`${this.mapName()}  Lv.${game.level} HP${maxHp()} G${game.gold} 魔石${game.stones.length}   ${this.objective()}   [矢印]移動 [Z]調べる/話す [C]メニュー`);
+    // 現在HP/自由意志を表示＝「消耗を持ち越す」設計（街/宿が遠い旅）で残量を常に把握できる。
+    //   低HP時は色で警告（25%以下＝赤）＝深追いの危険を一目で。
+    const hp = Math.max(0, game.heroHp), hpMax = maxHp();
+    const low = hp <= Math.ceil(hpMax * 0.25);
+    this.hud.setColor(low ? '#ff8a8a' : COLORS.text);
+    this.hud.setText(`${this.mapName()}  Lv.${game.level} HP${hp}/${hpMax} 自由${game.freeWill}/${game.freeWillMax} G${game.gold} 魔石${game.stones.length}   ${this.objective()}   [矢印]移動 [Z]調べる/話す [C]メニュー`);
   }
 }

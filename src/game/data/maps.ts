@@ -8,7 +8,7 @@ import { makeRng } from '@core/rng';
 
 export interface MapExit { to: string; sx: number; sy: number }
 
-export type NpcKind = 'villager' | 'garo' | 'nina' | 'shopItem' | 'shopWeapon' | 'shopArmor' | 'underElder' | 'maker' | 'inn';
+export type NpcKind = 'villager' | 'garo' | 'nina' | 'shopItem' | 'shopWeapon' | 'shopArmor' | 'underElder' | 'maker' | 'inn' | 'merchant';
 export interface NpcDef { x: number; y: number; kind: NpcKind; name?: string; color?: number; lines?: string[] }
 
 export interface ExamineDef { x: number; y: number; who?: string; title?: string; lines: string[]; give?: { gold?: number; pool?: string; xp: number; flag: string } }
@@ -19,6 +19,11 @@ export interface DecorDef { x: number; y: number; key: DecorKey; scale?: number 
 // 宝箱：歩いて重なると一度だけ開く（flag で重複防止）。gold/item/pool(魔石)のいずれかを与える。
 export interface TreasureDef { x: number; y: number; flag: string; gold?: number; item?: string; itemN?: number; pool?: string; note?: string }
 
+// 野営地（焚き火）：長く街のない旅路の休息点。隣接[Z]でHP/自由意志を全回復し、旅の心情を読む。
+//   無料・何度でも（街が遠い旅の救済）。だが野営地は地方に1つと疎ら＝野営地どうしの間の消耗は残る。
+//   first＝初回だけ流す“読むRPG”の一幕。座標は genCave の carve point に置いて床を保証する。
+export interface CampDef { x: number; y: number; name: string; first?: string[]; lines: string[] }
+
 export interface FieldMap {
   id: string;
   rows: string[];
@@ -27,6 +32,7 @@ export interface FieldMap {
   examines?: ExamineDef[];
   decor?: DecorDef[];
   treasures?: TreasureDef[];
+  camps?: CampDef[];  // 野営地（焚き火＝旅の途中の休息点）
   intro?: string[]; // 初回入場時に一度だけ流す到着ナレーション（FieldScene が flag で重複防止）
 }
 
@@ -237,9 +243,19 @@ export const MAPS: Record<string, FieldMap> = {
   path: {
     id: 'path',
     rows: genCave(40, 24, 1101, [
-      { x: 1, y: 12, ch: 'w' }, { x: 2, y: 12 }, { x: 8, y: 8 }, { x: 14, y: 16 }, { x: 20, y: 9 },
+      { x: 1, y: 12, ch: 'w' }, { x: 2, y: 12 }, { x: 8, y: 8 }, { x: 11, y: 12 }, { x: 14, y: 16 }, { x: 20, y: 9 },
       { x: 26, y: 15 }, { x: 32, y: 7 }, { x: 37, y: 12 }, { x: 38, y: 12, ch: 'e' },
     ], 0.42),
+    camps: [
+      { x: 11, y: 12, name: '野の焚き火', first: [
+        '霧の野のただ中。誰かが組んだ石の炉に、まだ使えそうな薪が残っていた。…火を入れる。',
+        '（里を出て、まだ半日。なのに、もうずいぶん遠くへ来た気がする。…ニナは、ちゃんと窓を閉めただろうか。）',
+        '（こわくない、と言えば嘘になる。でも。…遺構の石を持ち帰れば、皆が、また安心して眠れる。それでいい。）',
+      ], lines: [
+        '焚き火のそばで、息をととのえる。霧が、炎のまわりだけ、ほのかに金色に染まる。',
+        '（少し休もう。…遺構は、まだ先だ。）',
+      ] },
+    ],
     exits: {
       w: { to: 'village', sx: 18, sy: 19 }, // 西口→里（南口の内側に戻る）
       e: { to: 'ruin', sx: 2, sy: 9 },       // 東口→歌の遺構（遺構の入口へ）
@@ -314,9 +330,19 @@ export const MAPS: Record<string, FieldMap> = {
   hills: {
     id: 'hills',
     rows: genCave(44, 28, 7711, [
-      { x: 1, y: 13, ch: 'w' }, { x: 2, y: 13 }, { x: 10, y: 8, ch: 'T' }, { x: 16, y: 18 }, { x: 24, y: 10 },
+      { x: 1, y: 13, ch: 'w' }, { x: 2, y: 13 }, { x: 10, y: 8, ch: 'T' }, { x: 16, y: 18 }, { x: 20, y: 14 }, { x: 24, y: 10 },
       { x: 30, y: 20, ch: 'T' }, { x: 38, y: 12 }, { x: 42, y: 14, ch: 'e' },
     ], 0.46),
+    camps: [
+      { x: 20, y: 14, name: '丘の野営地', first: [
+        '丘の中ほど、風を避けられる窪地。…ここで火を起こすことにした。乾いた小枝が、ぱちりと爆ぜる。',
+        '（火を見ていると、考えてしまう。…この旅も、燃え方も、ぜんぶ「はじめから定まっている」のだと、里の皆なら言うのだろう。）',
+        '（だとしても。…いま、自分でここに火を熾した。この手で。…それは、定められていたから？ それとも——。）',
+      ], lines: [
+        '焚き火のそばで、ひと息つく。…炎の揺らぎだけが、決まりきった答えを持たない。',
+        '（少し休もう。…まだ、道は長い。）',
+      ] },
+    ],
     exits: {
       w: { to: 'world', sx: 43, sy: 12 },     // 西口→草原（戻る）
       e: { to: 'barrens', sx: 2, sy: 15 },    // 東口→涸れ谷／荒野
@@ -344,9 +370,23 @@ export const MAPS: Record<string, FieldMap> = {
   barrens: {
     id: 'barrens',
     rows: withBiome(genCave(46, 30, 8822, [
-      { x: 1, y: 15, ch: 'w' }, { x: 2, y: 15 }, { x: 10, y: 9, ch: 'T' }, { x: 18, y: 20 }, { x: 26, y: 12 },
+      { x: 1, y: 15, ch: 'w' }, { x: 2, y: 15 }, { x: 10, y: 9, ch: 'T' }, { x: 18, y: 20 }, { x: 22, y: 16 }, { x: 24, y: 16 }, { x: 26, y: 12 },
       { x: 34, y: 22, ch: 'T' }, { x: 40, y: 10 }, { x: 43, y: 14, ch: 'e' },
     ], 0.42), 0, [[14, 6], [15, 6], [28, 25], [29, 25], [38, 5]]),
+    npcs: [
+      // 旅の行商人（荒野の廃墟で店を開く）。道中の補給＝回復薬・魔石の買い取り＝街が遠い旅の救済。
+      { x: 24, y: 16, kind: 'merchant', name: '旅の行商人', color: 0xd8b86a },
+    ],
+    camps: [
+      { x: 22, y: 16, name: '廃墟の野営地', first: [
+        '崩れた壁の影に火を入れる。かつて、ここで誰かが暮らし、同じように火を囲んだのだろうか。',
+        '（滅んだ街。…理(ことわり)に従って、はじめから滅ぶと決まっていた？ なら、ここに居た人たちの夕餉も、笑い声も、ぜんぶ「読まれていた」ことになる。）',
+        '（…そんなのは、いやだ。理屈では言い返せない。それでも、いやだと、はっきり思う。…この「いやだ」は、どこから来る？）',
+      ], lines: [
+        '廃墟の火のそばで、渇いた喉をうるおす。乾いた風が、砂を運んでくる。',
+        '（休んだら、また東へ。…関は、もうすぐだ。）',
+      ] },
+    ],
     exits: {
       w: { to: 'hills', sx: 38, sy: 12 },     // 西口→丘陵（戻る）
       e: { to: 'pass', sx: 2, sy: 12 },       // 東口→山道の関
@@ -376,8 +416,18 @@ export const MAPS: Record<string, FieldMap> = {
     id: 'pass',
     rows: genCave(40, 26, 9933, [
       { x: 1, y: 12, ch: 'w' }, { x: 2, y: 12 }, { x: 9, y: 7, ch: 'T' }, { x: 16, y: 17 }, { x: 24, y: 8 },
-      { x: 30, y: 14 }, { x: 36, y: 6, ch: 'D' },
+      { x: 30, y: 14 }, { x: 32, y: 10 }, { x: 36, y: 6, ch: 'D' },
     ], 0.36),
+    camps: [
+      { x: 32, y: 10, name: '関の野営地', first: [
+        '裂け目を前にした、最後の平らな岩棚。…ここで火を熾し、ひと息いれる。あと少しで、この長い旅が終わる。',
+        '（霧の里を出て、どれだけ歩いただろう。草原、丘、荒野——景色は、ぜんぶ覚えている。自分の足が、選んで、運んだ景色だ。）',
+        '（「あの目」から隠れて生きる、と関の言葉は言った。…でも、自分はここまで「隠れず」歩いてきた。…その結末を、この目で確かめたい。）',
+      ], lines: [
+        '岩棚の火のそばで、装備をあらためる。風が、笛のように鳴っている。',
+        '（休んだら、裂け目[D]へ。…地の底の里は、もうすぐだ。）',
+      ] },
+    ],
     exits: {
       w: { to: 'barrens', sx: 40, sy: 10 },   // 西口→荒野（戻る）
       D: { to: 'tunnels', sx: 2, sy: 8 },      // 裂け目→坑道（地中の里へ・旅の終わり）

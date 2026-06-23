@@ -4,15 +4,15 @@
 import Phaser from 'phaser';
 import { CANVAS_W, CANVAS_H, COLORS } from '@app/theme';
 import { currentBeat, advance, rewindToLastField } from '@game/flow';
-import { game, grantXp, addStone, maxHp, heroAtk, heroDef, heroResist, boardCircuits, consumeItem, itemCount, faintReturnToTown, fieldResume } from '@game/state';
-import { ENEMIES, type Enemy } from '@game/data/enemies';
+import { game, grantXp, addStone, maxHp, heroAtk, heroDef, heroResist, boardCircuits, consumeItem, itemCount, faintReturnToTown, fieldResume, recordLore, recordKill } from '@game/state';
+import { ENEMIES, ENEMY_FLAVOR, type Enemy } from '@game/data/enemies';
 import { ITEMS } from '@game/data/items';
 import { rollStone, stoneLabel } from '@game/data/stones';
 import { makeRng } from '@core/rng';
 import type { Circuit } from '@core/board';
 import { ATTR_LABEL } from '@core/board';
 import {
-  startCombat, heroAttack, heroSkill, heroGuard, heroHealHp, heroHealFw, enemyTurn, circuitCost, skillBaseDamage,
+  startCombat, heroAttack, heroSkill, heroGuard, heroHealHp, heroHealFw, heroCounter, enemyTurn, circuitCost, skillBaseDamage,
   type CombatState,
 } from '@core/combat';
 import { fadeInOnCreate, addMuteToggle, transitionTo, popupNumber, flash, shake } from '@app/ui/fx';
@@ -32,7 +32,7 @@ const MON_SHAPE: Record<string, MonsterShape> = {
 };
 const HERO_PAL = heroPalette(0x3a6ea5, { hair: 0x4a3220 });
 type Phase = 'root' | 'skill' | 'item' | 'win' | 'lose';
-interface Cmd { key: 'attack' | 'skill' | 'item' | 'guard'; label: string }
+interface Cmd { key: 'attack' | 'skill' | 'item' | 'guard' | 'flee'; label: string }
 // 回復魔法は専用コマンドを廃止＝回復属性石の回路を「スキル」から撃つと回復する（§8.9・回路化）。
 const ROOT_BASE: Cmd[] = [
   { key: 'attack', label: 'こうげき' },
@@ -40,6 +40,7 @@ const ROOT_BASE: Cmd[] = [
   { key: 'item', label: 'どうぐ' },
   { key: 'guard', label: 'みやぶる' },
 ];
+const FLEE_CMD: Cmd = { key: 'flee', label: 'にげる' };
 
 export class BattleScene extends Phaser.Scene {
   private mode: 'flow' | 'encounter' = 'flow';
@@ -56,6 +57,7 @@ export class BattleScene extends Phaser.Scene {
   private text!: Phaser.GameObjects.Text;
   private menu!: Phaser.GameObjects.Text;
   private rewarded = false;
+  private fleeing = false;    // にげる成功の演出中＝以後の入力を無視（遷移待ちの隙の誤操作を防ぐ）
   private winFlag?: string;   // 任意ボス等＝撃破時に立てる flag（再戦防止）
   private enemyImg!: Phaser.GameObjects.Image; // 魔物のドット絵
   private heroImg!: Phaser.GameObjects.Image;  // 主人公のドット絵（左下・右向き）
@@ -69,7 +71,8 @@ export class BattleScene extends Phaser.Scene {
     if (data?.mode === 'encounter') {
       this.mode = 'encounter';
       this.enemyId = data.enemyId ?? 'mob1';
-      this.intro = `${ENEMIES[this.enemyId]?.name ?? '魔物'}が現れた！`;
+      // 遭遇フレーバー（読むRPGの手触り）。無ければ従来の「○○が現れた！」。
+      this.intro = ENEMY_FLAVOR[this.enemyId] ?? `${ENEMIES[this.enemyId]?.name ?? '魔物'}が現れた！`;
     } else {
       this.mode = 'flow';
       const beat = currentBeat();
@@ -84,6 +87,7 @@ export class BattleScene extends Phaser.Scene {
     this.phase = 'root';
     this.rootIdx = 0;
     this.rewarded = false;
+    this.fleeing = false;
 
     paintScene(this, game.skillUnlocked ? 'board' : 'phys');
     startBgm('battle');
@@ -122,8 +126,12 @@ export class BattleScene extends Phaser.Scene {
     );
   }
 
-  /** 現在のルートコマンド（こうげき/スキル/どうぐ/みやぶる。回復は回復属性石の回路＝「スキル」から撃つ）。 */
-  private root(): Cmd[] { return ROOT_BASE; }
+  /** 現在のルートコマンド（こうげき/スキル/どうぐ/みやぶる。回復は回復属性石の回路＝「スキル」から撃つ）。
+   *  覚醒後のフィールド遭遇のみ「にげる」を足す＝旅路のトラッシュ戦をスキップできる（詰み防止のため
+   *  覚醒前/フロー戦＝ボス では出さない＝ボス前のレベリングを温存）。 */
+  private root(): Cmd[] {
+    return (this.mode === 'encounter' && game.skillUnlocked) ? [...ROOT_BASE, FLEE_CMD] : ROOT_BASE;
+  }
 
   private circuits(): Circuit[] { return boardCircuits(); }
   private ownedItems(): { id: string; name: string; count: number }[] {
@@ -131,6 +139,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private onKey(key: string): void {
+    if (this.fleeing) return; // にげる成功の演出中＝遷移待ちの隙の誤操作を無視
     const k = key.toLowerCase();
     if (this.phase === 'win') { if (k === 'z' || k === 'enter') this.finishWin(); return; }
     if (this.phase === 'lose') { if (k === 'z' || k === 'enter') this.faint(); return; }
@@ -156,6 +165,7 @@ export class BattleScene extends Phaser.Scene {
       const cmd = this.root()[this.rootIdx]!;
       if (cmd.key === 'attack') { this.doAttack(); return; }
       if (cmd.key === 'guard') { this.doGuard(); return; }
+      if (cmd.key === 'flee') { this.doFlee(); return; }
       if (cmd.key === 'skill') {
         if (!game.skillUnlocked) { this.log = 'まだスキルは使えない（覚醒前）。'; playSfx('cancel'); this.render(); return; }
         if (this.circuits().length === 0) { this.log = '撃てる回路がない。魔石盤に魔石を嵌めよう。'; playSfx('cancel'); this.render(); return; }
@@ -185,6 +195,31 @@ export class BattleScene extends Phaser.Scene {
     this.cs = r.state;
     playSfx('confirm');
     this.afterHero('みやぶる。…敵の動きを読む（次の攻撃を大きく軽減）。');
+  }
+
+  /**
+   * にげる（覚醒後のフィールド遭遇のみ）。旅路のトラッシュ戦をスキップ＝グラインド疲れの救済。
+   *   成功＝報酬なしでフィールドへ復帰（経験/魔石/金は得られない＝逃げ得にしない自然な抑制）。
+   *   失敗＝敵に手番を渡す（隙を突かれる）。決定論シード＝リトライで同じ結果（理不尽な乱数にしない）。
+   *   ※ フロー戦（ボス）と覚醒前では root() に出ないので、ボス前のレベリングは温存＝詰み防止は不変。
+   */
+  private doFlee(): void {
+    // 決定論シード（その状況で結果は一意＝乱数の理不尽さを避ける）。失敗後は敵の手番で状況が変わるので、
+    //   同一戦闘内の次の試行は別結果になりうる（＝粘れば抜けられる）。
+    const r = makeRng(this.cs.turn * 37 + this.cs.enemy.hp * 7 + this.cs.hero.hp * 13 + 5);
+    if (r() < 0.75) {
+      this.fleeing = true;
+      playSfx('cancel');
+      this.log = 'すばやく間合いを切って、その場を離れた。';
+      // 持ち越すHP/自由意志を明示的にコミット（他の退出path=onWin/faintと同様に自己完結させる）。
+      game.heroHp = this.cs.hero.hp;
+      game.freeWill = this.cs.hero.freeWill;
+      this.render();
+      this.time.delayedCall(280, () => { fieldResume.active = true; transitionTo(this, 'Field', { resume: true }); });
+      return;
+    }
+    // 逃げ損なった＝敵の手番（隙を突かれる）。afterHero と同じ被弾処理を通す。
+    this.afterHero('逃げ損なった——！');
   }
 
   private doSkill(): void {
@@ -254,9 +289,21 @@ export class BattleScene extends Phaser.Scene {
 
     const hitsStr = e.hits > 1 ? `${e.hits}連撃 ` : '';
     let react: string;
-    if (e.telegraph) { react = `${name}は力をためている…！ 次は${attrName ? attrName : ''}大攻撃だ——[みやぶる]で受け流せ。`; playSfx('confirm'); }
+    if (e.telegraph) { react = `${name}は力をためている…！ 次は${attrName ? attrName : ''}大攻撃だ——[みやぶる]で受け流せば、読み切った隙に反撃できる。`; playSfx('confirm'); }
     else if (e.big) { react = e.guarded ? `${name}の${attrName}大攻撃を看破！ 受け流した（${e.dealt}）。` : `${name}の${attrName}大攻撃！ ${e.dealt}ダメージ。`; playSfx(e.guarded ? 'weak' : 'hurt'); }
     else { react = `${name}の${attrName}${hitsStr}攻撃 ${e.guarded ? `${e.dealt}（看破！）` : e.dealt}`; playSfx('hurt'); }
+
+    // 看破からの反撃＝大攻撃を読み切って受け流した“隙”に一撃を入れる（予測防御の payoff＝テーマ）。
+    //   core/combat の heroCounter（autoWinnable は使わない＝詰み判定の下限は不変・反撃は熟練への上乗せ）。
+    if (e.big && e.guarded && this.cs.outcome === 'none') {
+      const cr = heroCounter(this.cs);
+      this.cs = cr.state;
+      playSfx('hit');
+      popupNumber(this, EX, EY - 30, `${cr.dealt}`, { color: '#9ed0ff', big: true });
+      flash(this, 0x9ed0ff, 130);
+      react += `／読み切った——反撃 ${cr.dealt}ダメージ！`;
+      if (this.cs.outcome === 'win') { this.onWin(`${actionLog}／${react}`); return; }
+    }
 
     if (this.cs.outcome === 'lose') {
       playSfx('lose');
@@ -281,8 +328,11 @@ export class BattleScene extends Phaser.Scene {
     game.heroHp = this.cs.hero.hp;
     game.freeWill = this.cs.hero.freeWill;
     const xr = grantXp(e.xp);
+    recordKill(this.enemyId);                // 図鑑の討伐数を+1（読むとき累計を表示）
+    const newFoe = this.recordBestiary();   // 撃破した魔物を図鑑（記録帳）へ＝“読むRPG”の収集payoff（初撃破のみ）
     this.phase = 'win';
     let line = `${actionLog} ${e.name}を倒した！ G+${e.gold}・魔石「${stoneLabel(stone)}」・経験+${e.xp}。`;
+    if (newFoe) line += '（魔物を記録帳に記した）';
     if (xr.leveledUp) {
       popupNumber(this, CANVAS_W / 2, EY + 80, `LEVEL UP! Lv.${xr.to}`, { color: '#ffe27a', big: true });
       line += `★レベルアップ Lv.${xr.from}→${xr.to}！`;
@@ -290,6 +340,20 @@ export class BattleScene extends Phaser.Scene {
     line += this.mode === 'encounter' ? '［Z］で戻る' : '［Z］で進む';
     this.log = line;
     this.render();
+  }
+
+  /** 撃破した魔物を図鑑（記録帳）に登録＝弱点・攻撃属性・癖を読み返せる。初撃破のみ true。 */
+  private recordBestiary(): boolean {
+    const e = this.enemyDef;
+    const traits: string[] = [];
+    if (e.atkAttr && e.atkAttr !== 'physical') traits.push(`${ATTR_LABEL[e.atkAttr]}属性の攻撃を使う`);
+    else traits.push('物理で攻めてくる');
+    if (e.multi && e.multi > 1) traits.push(`${e.multi}連撃を仕掛ける`);
+    if (e.bigEvery) traits.push('「ためる」予兆から大攻撃を放つ（みやぶる→反撃が効く）');
+    return recordLore(`bestiary:${this.enemyId}`, `【魔物】${e.name}`, [
+      ENEMY_FLAVOR[this.enemyId] ?? `${e.name}。歌や伝聞に名の残る魔物。`,
+      `弱点＝${ATTR_LABEL[e.weakness]}。${traits.join('。')}。`,
+    ]);
   }
 
   private finishWin(): void {

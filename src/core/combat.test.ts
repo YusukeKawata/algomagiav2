@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  startCombat, heroAttack, heroSkill, heroGuard, heroHealHp, heroHealFw, enemyTurn, circuitCost, autoWinnable,
+  startCombat, heroAttack, heroSkill, heroGuard, heroHealHp, heroHealFw, heroCounter, enemyTurn, circuitCost, autoWinnable,
   skillBaseDamage, strikeDamage,
   type CombatState,
 } from '@core/combat';
@@ -229,6 +229,26 @@ describe('ターン制戦闘: 強敵の「ためる→大攻撃」と看破', ()
     const r = enemyTurn(s);          // 大攻撃を看破で受ける
     expect(r.big).toBe(true);
     expect(r.dealt).toBe(Math.floor(10 * 0.25)); // 2
+  });
+
+  it('看破からの反撃＝atkの3/4を敵に入れる（自由意志は使わない・敵HP0で勝利）', () => {
+    const s = startCombat({ hpMax: 40, freeWillMax: 24, atk: 8, def: 0 }, { name: '番獣', hp: 20, atk: 5, weakness: 'ice' });
+    const r = heroCounter(s);
+    expect(r.ok).toBe(true);
+    expect(r.note).toBe('counter');
+    expect(r.dealt).toBe(Math.round(8 * 0.75));      // 6
+    expect(r.state.enemy.hp).toBe(20 - 6);
+    expect(r.state.hero.freeWill).toBe(s.hero.freeWill); // 自由意志は消費しない
+    // とどめなら勝利になる。
+    const lethal = heroCounter({ ...s, enemy: { ...s.enemy, hp: 4 } });
+    expect(lethal.state.outcome).toBe('win');
+  });
+
+  it('反撃は autoWinnable（詰み判定）を変えない＝中の上ボスは依然L1で負ける（反撃は上乗せ）', () => {
+    // heroCounter は autoWinnable のループに含まれない＝詰み判定の保守的下限は不変。
+    const boss = ENEMIES['boss']!;
+    const fistL1 = { hpMax: statsForLevel(1).hpMax, freeWillMax: statsForLevel(1).freeWillMax, atk: statsForLevel(1).power, def: 0 };
+    expect(autoWinnable(fistL1, boss)).toBe(false);
   });
 });
 

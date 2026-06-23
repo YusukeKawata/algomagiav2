@@ -130,6 +130,21 @@ export function heroGuard(s: CombatState): ActionResult {
   return { state: { ...s, hero: { ...s.hero, freeWill, guarding: true } }, dealt: 0, weak: false, cost: 0, ok: true, note: 'guard' };
 }
 
+/**
+ * 看破からの反撃＝大攻撃を「みやぶる」で受け流した“読み切った隙”に一撃を入れる（予測防御の payoff）。
+ *   決定論の敵＝予兆を読めば確実に隙が生まれる＝テーマ（読まれた運命を逆手に取る）の具現。
+ *   ダメージ＝こうげき(atk)の3/4（最低1）。自由意志は使わない。敵HP0で勝利。
+ *   ※ autoWinnable（詰み判定＝攻撃/看破だけの保守的な下限）はこの反撃を“使わない”ので、
+ *     既存のバランス不変条件（L1ボスは負ける等）は変わらない＝反撃は熟練プレイへの上乗せ。
+ */
+export function heroCounter(s: CombatState): ActionResult {
+  if (s.outcome !== 'none') return { state: s, dealt: 0, weak: false, cost: 0, ok: false };
+  const dealt = Math.max(1, Math.round(s.hero.atk * 0.75));
+  const hp = Math.max(0, s.enemy.hp - dealt);
+  const outcome: Outcome = hp <= 0 ? 'win' : 'none';
+  return { state: { ...s, enemy: { ...s.enemy, hp }, outcome }, dealt, weak: false, cost: 0, ok: true, note: 'counter' };
+}
+
 /** 道具：HP回復。 */
 export function heroHealHp(s: CombatState, amount: number): ActionResult {
   if (s.outcome !== 'none') return { state: s, dealt: 0, weak: false, cost: 0, ok: false };

@@ -27,4 +27,10 @@ export const SHOPS: Record<string, Shop> = {
     greeting: '丈夫なのを縫っといたよ。…炎やら氷やら、魔物に合わせて着替えな。',
     stock: ['leather', 'scale', 'emberhide', 'frostweave', 'stormhide', 'ward'],
   },
+  // 旅の途中（荒野の廃墟）で店を開く行商人。街が遠い道中の補給＝回復薬を売り、余った魔石を買い取る。
+  road: {
+    id: 'road', kind: 'item', name: '旅の荷', clerk: '旅の行商人',
+    greeting: 'こんな荒れ地で人に会うとはね。…薬がいるだろう。余った魔石は買い取るよ。',
+    stock: ['herb', 'potion', 'dew', 'spring'],
+  },
 };

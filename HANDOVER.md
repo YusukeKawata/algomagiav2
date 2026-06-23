@@ -14,7 +14,17 @@ v2 がv1実装からズレすぎたため、混乱を避けて**殻（UI/物語/
 `npm run dev`＝タイトル(はじめから/つづきから)→名前入力→**霧の里**(広いスクロール村ハブ・**ガロの家[屋内]で会話＝クエスト＆形見の魔石**・サブNPC会話・行商人の露店で装備/道具・調べる)→**南門[E]**→**森の小道**→**歌の遺構**(奥ほど強い徘徊石に**無制限ランダム遭遇**・調べる・一度きりの魔石拾得・最奥の番獣)→**番獣戦**(物理)→**里へ帰還しガロの家で報告→「ついてこい」で据炉へ案内**→据炉で**覚醒**(Qの冷たい声・スキル解禁)→魔石盤の**盤戦2連戦**(awakened→frost)→旅立ち→**坑道→地中の里**(石工リーゼの工房＝集積／盤4×4／回復魔法、不干渉派タルゴ)→この先へ[O]→第1幕おわり。
 **敵を倒すとXPでレベルアップ**し HP/物理火力/自由意志が伸びる（通しで L1→L5・上がりにくく1戦が重い）。**難易度＝中の上**：HP/自由意志は戦闘間で**消耗を持ち越す**（回復＝宿屋/道具/いやし/覚醒）、無対策の番獣ボスは負ける（敗北リトライだけ全回復＝詰まない）。**覚醒後の里→地中はワールドマップを歩いて移動**（ワープ廃止）。**人物はコード生成のドット絵**（4方向歩行・魔物はシルエット別）。**オートセーブは覚醒後(魔石装備後)のみ**＝データ奉納の伏線。
 **背景＝手続き生成(`bg.ts`)／フィールド＝Kenneyタイル(`tiles.ts`)＋スクロールカメラ＋データ駆動マップ(`maps.ts` の npcs/examines/decor)**。人物は色トークン（立ち絵素材は未供給）。
-通しは `.claude/tmp/autoplay3.cjs`（dev限定 `window.__game`/`__state` を読み、Field=状態で目標切替＋BFS＋NPC会話、Battle=z連打）で **TheEnd到達・戦闘7回・pageエラー0**を確認。**69テスト/typecheck/build 緑**。詳細な最新変更は下の「2026-06-21（続2）」。
+通しは `.claude/tmp/autoplay3.cjs`（dev限定 `window.__game`/`__state` を読み、Field=状態で目標切替＋BFS＋NPC会話、Battle=z連打）で **TheEnd到達・pageエラー0**を確認。**100テスト/typecheck/build 緑**。**最新の作業は下の「2026-06-22（続8）」**（旅路の体験を豊かに：消耗可視化・野営地・旅商人・看破反撃・にげる・遭遇フレーバー）。
+
+### 2026-06-22（続8）旅路の体験を豊かに：消耗可視化・野営地・旅商人・看破反撃・にげる・遭遇フレーバー・魔物図鑑・旅BGM 〔ponti指示「自分でプレイ→提案→loopで自走」〕
+プレイ→診断→改善→検証(typecheck/test/build＋実機プローブ)を自走で12ループ。**100テスト/typecheck/build 緑**、各改善を実機プローブ/スクショで確認（pageエラー0）、最終 autoplay で TheEnd 到達。診断の核＝「中盤(草原→丘陵→荒野→山道の関の約40戦)が“こうげき連打”の単調なグラインドで、長旅なのに休息・人との出会い・残量表示が無い」。**ロック済み設計（盤1×1進行・autoWinnable不変条件）は一切壊さず追加のみ**で豊かにした。下の6点＋さらに：**⑦魔物図鑑**（撃破で記録帳に魔物登録＝フレーバー＋弱点/癖＋討伐数）**⑧旅路の専用BGM「travel」**（霧の野/草原/丘陵/荒野/山道）**⑨記録帳の分類カウンタ**（魔物図鑑/土地と旅/調べたこと）**⑩にげる成功演出中の入力ガード**（fleeing）。
+- **フィールドHUDに現在HP/自由意志を表示**（旧＝常に最大HP表示のバグ）。低HP(25%以下)は赤で警告＝「消耗を持ち越す」設計に必須の可視化。
+- **旅の野営地（焚き火）**を path/hills/barrens/pass に追加。隣接[Z]で**HP/自由意志を全回復（無料・街が遠い旅の救済）**＋初回は決定論テーマの内省を一幕＋記録帳へ。座標は genCave の carve point で床保証・`maps.test` に「野営地は床・出口から到達可能」の不変条件。`FieldMap.camps`/`CampDef`。
+- **旅の行商人**（荒野の廃墟＝barrens の野営地そば・`NpcKind 'merchant'`/`shops.ts` の `road` 店）。道中で回復薬を補給でき、**余った魔石を売れる**＝地中の里まで使い道のなかった魔石グラットを解消＋道中の人との出会い。
+- **看破からの反撃**（`core/combat.heroCounter`・テスト付）：大攻撃を「みやぶる」で受け流した“読み切った隙”に一撃（atk×3/4）＝予測防御を「作業」から「快感」へ＝テーマ（読まれた運命を逆手に取る）の具現。**★ autoWinnable は heroCounter を呼ばない＝詰み判定の保守的下限は不変**（L1ボスは依然負ける・明示テスト追加）。予兆ヒントに反撃の payoff を明記＝新メカニクスを発見させる。
+- **「にげる」コマンド**：**覚醒後のフィールド遭遇のみ**（フロー戦＝ボス・覚醒前では出さない＝ボス前レベリング温存＝詰み防止不変）。成功(75%・決定論シード)＝報酬なしで復帰／失敗＝敵に手番。旅路のグラインド疲れの救済。
+- **敵ごとの遭遇フレーバー文**（`enemies.ts` `ENEMY_FLAVOR` 17種）：同じ攻撃連打でも現れ方の一文で各モンスターに性格＝“読むRPG”の手触り。バランス非依存。BattleScene の encounter intro が使用。
+- 触ったファイル：`FieldScene.ts`（HUD/野営地/行商人）・`maps.ts`(`camps`/CampDef/各マップ)・`maps.test.ts`(野営地不変条件)・`shops.ts`(road)・`core/combat.ts`(heroCounter)+`combat.test.ts`・`BattleScene.ts`(反撃/にげる/フレーバー)・`enemies.ts`(ENEMY_FLAVOR)。dev限定プローブ＝`.claude/tmp/{probe-counter,probe-flee,shot-flavor,shot-road}.cjs`。
 
 ### 2026-06-22（続7）スロット進行を世界観準拠に・回復を回路化・盤チュートリアル/心情を文脈へ・覚醒前を旅化・村を有機化 〔ponti指示〕
 ponti のフィードバック5点を実装。**97テスト/typecheck/build 緑**。※未実機確認＝**はじめから**で1周プレイ要（autoplay はこのマシンで playwright/chromium パスが `ponti` 固定で動かない）。
@@ -171,7 +181,7 @@ ponti のフィードバック5点を実装。**97テスト/typecheck/build 緑*
 ## 再開のしかた
 ```
 npm install        # 初回のみ（phaser / phaser4-rex-plugins 含む）
-npm run test       # 69件（combat/progress/rng/board/battle/phys/board-fight/smoke/state）。緑を確認
+npm run test       # 100件（combat/progress/rng/board/battle/phys/board-fight/smoke/state/maps）。緑を確認
 npm run typecheck
 npm run build
 npm run dev -- --port 5173 --strictPort   # ポートは 5173 に統一（ハーネスも 5173）
@@ -215,4 +225,12 @@ dev サーバ(**5173**)を撮影→Read で目視。雛形は `.claude/tmp/`（g
 - **ダンジョンは `maps.genCave`（シード付き・L字連結保証）で生成**＝不定形・連結保証。`maps.test.ts` が「出口/ゲート相互到達・着地点が床・行幅一致」を担保（新マップを足したら GATES に追加）。**遭遇は tunnels/ruin/path のみ＝underville(地中の里)は安全地帯（`ENCOUNTER_POOLS` に入れない）**。到着ナレーション＝`FieldMap.intro`（flag `intro-<id>` で一度きり）。
 - **人物アート＝`app/ui/sprites.ts` の手続き生成ドット絵**（外部素材ゼロ・自動縁取り・決定論）。人物＝`ensureHumanoid`/`humanoidKey`/`heroPalette`（4方向×2歩行）、魔物＝`ensureMonster`/`monsterKey`/`monsterPalette`（シルエット別）。テクスチャは TextureManager 常駐（exists ガードで一度だけ）。FieldScene/BattleScene が使用。
 - **覚醒後の里南門[E]はワールドマップへ**（`game.flags['boards-done']`＝world初入場で立つ）。覚醒直後の[E]は出発ダイアログへ `advance`（旧・覚醒前盤戦は撤廃済み）＝FieldScene.useExit。**覚醒で盤は広げない**（1×1のまま村を出る＝上の続7参照）。
+- **フィールドHUDは現在HP/自由意志を出す（2026-06-22 続8）**：`FieldScene.updateHud` は `game.heroHp/maxHp()`＋`game.freeWill/freeWillMax`。**`maxHp()` だけを出さない**（消耗を持ち越す設計で残量が見えなくなる＝旧バグ）。低HPは赤。
+- **野営地（焚き火）＝`FieldMap.camps`/`CampDef`（2026-06-22 続8）**：隣接[Z]で `restFull`（無料・街が遠い旅の救済）。座標は genCave の carve point で床保証＝**`maps.test` の「野営地は床・出口から到達可能」を緑に保つ**。`FieldScene.campAt/talkCamp/restAtCamp`＋焚き火描画＋ミニマップ橙マーカー。初回 first は記録帳へ。
+- **旅の行商人＝`NpcKind 'merchant'`/`shops.ts` の `road` 店（barrens）**：道中の補給＋魔石売却。新マップに行商人を足すなら carve point に置く（床保証）。
+- **看破からの反撃＝`core/combat.heroCounter`（2026-06-22 続8・重要）**：大攻撃を看破で受けた時のみ BattleScene が発火（`e.big && e.guarded`）。**★ `autoWinnable` は heroCounter を呼ばない＝詰み判定（L1ボス負け等）の保守的下限は不変**。enemyTurn 内に反撃を入れない（autoWinnable が変わり `expect(false)` が崩れる）。combat.test の「反撃は autoWinnable を変えない」を緑に保つ。
+- **「にげる」は覚醒後＆encounter のみ（2026-06-22 続8）**：`BattleScene.root()` が `mode==='encounter' && game.skillUnlocked` の時だけ FLEE_CMD を足す。**フロー戦（ボス）/覚醒前では出さない＝ボス前レベリングを温存＝詰み防止不変**。成功は決定論シード75%・報酬なし復帰。戻して常時 flee 可にしない（ボスを fleeしてレベル不足→詰みの恐れ）。
+- **遭遇フレーバー＝`enemies.ts` `ENEMY_FLAVOR`（2026-06-22 続8）**：encounter intro の描写（無ければ「○○が現れた！」）。バランス非依存の純テキスト。新しい遭遇敵を足したら一文を添えると“読むRPG”の手触りが揃う。
+- **魔物図鑑＝記録帳の `bestiary:<enemyId>`（2026-06-22 続8）**：`BattleScene.onWin` が `recordKill`（`game.kills`）＋`recordBestiary`（初撃破のみ・フレーバー＋弱点/癖）。`MenuScene` の記録 reading で `game.kills` から「討伐数」を添える。`game.kills` は save（game全体）に自動で含まれ後方互換。記録帳は分類カウンタ（id 接頭辞 `bestiary:`/`place:`/`camp:`/`ex:` で集計）。
+- **旅路BGM＝`music.ts` の `travel`／`FieldScene.bgmTrack()`（2026-06-22 続8）**：path/world/hills/barrens/pass は travel、underville/tunnels=under、ruin/wilds=ruin、他=village。新マップを足したら bgmTrack も更新。手続き合成＝アセット不要・決定論非関与。
 - 旧プロジェクト `../20260608_algomagia` は改変しない（アーカイブ）。`art-src/`（Kenney生パック）は gitignore＝配信は `public/assets/` のみ。
